@@ -9,6 +9,8 @@ A Gatsby 4 salon booking and checkout experience with Paystack Terminal integrat
 - **Client Intake**: Capture client information and consent
 - **Payment Processing**: Integrated with Paystack Terminal
 - **Real-time Updates**: Pusher-powered payment status notifications
+- **Error Monitoring**: Production-ready error tracking
+- **Feature Flags**: Gradual rollout capabilities
 
 ## 📋 Requirements
 
@@ -34,10 +36,10 @@ yarn install
 
 ### 3. Configure environment
 
-Copy `.env.sample` to `.env` and fill in your credentials:
+Copy `.env.example` to `.env.development` and fill in your credentials:
 
 ```shell
-cp .env.sample .env
+cp .env.example .env.development
 ```
 
 ### 4. Start development server
@@ -86,6 +88,15 @@ yarn e2e:ui            # Interactive UI mode
 yarn e2e:headed        # Run with visible browser
 ```
 
+### Accessibility Testing
+
+E2E tests include comprehensive accessibility audits using axe-core:
+- WCAG 2.1 AA compliance checks
+- Heading structure validation
+- Color contrast verification
+- Form label associations
+- Keyboard navigation
+
 ## 🔄 CI/CD
 
 This repository uses GitHub Actions for continuous integration:
@@ -96,11 +107,42 @@ This repository uses GitHub Actions for continuous integration:
 - **Security** (`security.yml`): Dependency audits and CodeQL analysis
 - **Lighthouse** (`lighthouse.yml`): Performance and accessibility audits
 
+### Dependabot
+
+Automated dependency updates are configured via `.github/dependabot.yml`:
+- Weekly npm dependency updates
+- Grouped minor/patch updates
+- GitHub Actions updates
+
+## 🚦 Feature Flags
+
+Feature flags allow gradual rollout of new features. Configure in `src/utils/feature-flags.ts`:
+
+```typescript
+import { isFeatureEnabled } from './utils/feature-flags'
+
+if (isFeatureEnabled('newBookingFlow')) {
+  // New booking flow
+}
+```
+
+Override flags via URL parameters: `?ff_newBookingFlow=true`
+
+## 📊 Error Monitoring
+
+Error monitoring is configured in `src/utils/error-monitor.ts`. In production, configure Sentry:
+
+```shell
+GATSBY_SENTRY_DSN=https://your-dsn@sentry.io/project
+```
+
 ## 📁 Project Structure
 
 ```
 skintwin-salon/
-├── .github/workflows/     # CI/CD workflows
+├── .github/
+│   ├── workflows/         # CI/CD workflows
+│   └── dependabot.yml     # Dependency updates
 ├── e2e/                   # E2E test suite
 │   ├── fixtures/          # Test data
 │   ├── mocks/             # API mocks
@@ -109,23 +151,23 @@ skintwin-salon/
 │   └── specs/             # Test specifications
 ├── src/
 │   ├── api/               # Gatsby Functions (serverless)
+│   │   ├── appointments/  # Appointment CRUD
+│   │   ├── clients/       # Client management
+│   │   ├── integrations/  # skintwin-ai connector
+│   │   └── payments/      # Paystack integration
 │   ├── components/        # React components
 │   ├── context/           # React Context providers
 │   ├── data/              # Static data (JSON)
-│   ├── images/            # Image assets
 │   ├── pages/             # Gatsby pages
 │   ├── styles/            # SCSS styles
-│   └── test/              # Unit test setup
+│   ├── test/              # Unit test setup
+│   └── utils/             # Utilities (error monitor, feature flags)
 ├── static/                # Static assets
-├── docs/                  # Documentation
 ├── playwright.config.ts   # Playwright configuration
 ├── vitest.config.ts       # Vitest configuration
+├── lighthouserc.json      # Lighthouse CI configuration
 └── tsconfig.json          # TypeScript configuration
 ```
-
-## 📋 Documentation
-
-- [Salon Operations Implementation Plan](./docs/salon-operations-implementation-plan.md)
 
 ## 🔗 Related
 
