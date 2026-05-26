@@ -6,3 +6,19 @@ public
 .env
 .env.development
 .env.production
+
+# Test artifacts
+coverage/
+test-results/
+playwright-report/
+.lighthouseci/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
