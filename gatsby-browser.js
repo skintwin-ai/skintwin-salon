@@ -1,4 +1,4 @@
-import CartContextProvider from "./src/context/cart-context"
+import BookingContextProvider from "./src/context/booking-context"
 
 export const registerServiceWorker = () => true
-export const wrapRootElement = CartContextProvider
+export const wrapRootElement = BookingContextProvider

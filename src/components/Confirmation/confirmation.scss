@@ -1,0 +1,248 @@
+.confirmation {
+  max-width: 700px;
+  margin: 0 auto;
+  padding: 2rem;
+
+  &__header {
+    text-align: center;
+    margin-bottom: 2rem;
+    padding: 2rem;
+    background: linear-gradient(135deg, #e8f5e9 0%, #c8e6c9 100%);
+    border-radius: 1rem;
+  }
+
+  &__icon {
+    width: 64px;
+    height: 64px;
+    margin: 0 auto 1rem;
+    background: #4caf50;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    color: white;
+  }
+
+  &__title {
+    font-size: 1.75rem;
+    font-weight: 700;
+    color: #2e7d32;
+    margin: 0 0 0.5rem;
+  }
+
+  &__subtitle {
+    font-size: 1rem;
+    color: #666;
+    margin: 0;
+  }
+
+  &__details {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+    margin-bottom: 2rem;
+  }
+
+  &__section {
+    background: #fff;
+    border: 1px solid #e0e0e0;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+  }
+
+  &__section-title {
+    font-size: 1.125rem;
+    font-weight: 600;
+    color: #333;
+    margin: 0 0 1rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 2px solid #e0e0e0;
+  }
+
+  &__list {
+    margin: 0;
+    padding: 0;
+  }
+
+  &__item {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    border-bottom: 1px solid #f0f0f0;
+
+    &:last-child {
+      border-bottom: none;
+    }
+
+    dt {
+      font-weight: 500;
+      color: #666;
+    }
+
+    dd {
+      margin: 0;
+      font-weight: 600;
+      color: #333;
+    }
+  }
+
+  &__services {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  &__service {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.75rem 0;
+    border-bottom: 1px solid #f0f0f0;
+
+    &:last-child {
+      border-bottom: none;
+    }
+  }
+
+  &__service-name {
+    font-weight: 500;
+    color: #333;
+  }
+
+  &__service-details {
+    font-size: 0.875rem;
+    color: #666;
+  }
+
+  &__totals {
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 2px solid #e0e0e0;
+  }
+
+  &__total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.5rem 0;
+    font-size: 0.9375rem;
+
+    &--final {
+      font-size: 1.125rem;
+      font-weight: 700;
+      color: #2e7d32;
+      margin-top: 0.5rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid #e0e0e0;
+    }
+  }
+
+  &__actions {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 2rem;
+
+    @media (max-width: 480px) {
+      flex-direction: column;
+    }
+  }
+
+  &__action {
+    flex: 1;
+    padding: 1rem 1.5rem;
+    border-radius: 0.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    text-align: center;
+    text-decoration: none;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    min-height: 48px;
+
+    &--primary {
+      background: #2c3e50;
+      color: #fff;
+      border: none;
+
+      &:hover,
+      &:focus {
+        background: #1a252f;
+      }
+
+      &:focus {
+        outline: 2px solid #2c3e50;
+        outline-offset: 2px;
+      }
+    }
+
+    &--secondary {
+      background: transparent;
+      color: #2c3e50;
+      border: 2px solid #2c3e50;
+
+      &:hover,
+      &:focus {
+        background: #f5f5f5;
+      }
+
+      &:focus {
+        outline: 2px solid #2c3e50;
+        outline-offset: 2px;
+      }
+    }
+  }
+
+  &__info {
+    background: #fff8e1;
+    border: 1px solid #ffc107;
+    border-radius: 0.75rem;
+    padding: 1.5rem;
+
+    h3 {
+      font-size: 1rem;
+      font-weight: 600;
+      color: #e65100;
+      margin: 0 0 0.75rem;
+    }
+
+    ul {
+      margin: 0;
+      padding-left: 1.25rem;
+      color: #666;
+      font-size: 0.9375rem;
+      line-height: 1.6;
+    }
+
+    li {
+      margin-bottom: 0.5rem;
+
+      &:last-child {
+        margin-bottom: 0;
+      }
+    }
+  }
+}
+
+// Print styles
+@media print {
+  .confirmation {
+    &__header {
+      background: none;
+      border: 2px solid #2e7d32;
+    }
+
+    &__icon {
+      background: #2e7d32;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+
+    &__actions {
+      display: none;
+    }
+
+    &__section {
+      break-inside: avoid;
+    }
+  }
+}

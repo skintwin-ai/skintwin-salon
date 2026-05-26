@@ -1,0 +1,63 @@
+name: Lighthouse
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main, develop]
+  schedule:
+    # Run weekly on Monday at 6 AM UTC
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: lighthouse-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  lighthouse:
+    name: Lighthouse Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Build Gatsby site
+        run: yarn build
+        env:
+          GATSBY_AUTH_KEY: ${{ secrets.GATSBY_AUTH_KEY }}
+          GATSBY_BASE_API: ${{ vars.GATSBY_BASE_API || 'https://api.paystack.co' }}
+          GATSBY_PUSHER_KEY: ${{ secrets.GATSBY_PUSHER_KEY }}
+          GATSBY_PUSHER_APP_ID: ${{ secrets.GATSBY_PUSHER_APP_ID }}
+          GATSBY_PUSHER_SECRET: ${{ secrets.GATSBY_PUSHER_SECRET }}
+          GATSBY_TERMINAL_ID: ${{ secrets.GATSBY_TERMINAL_ID }}
+
+      - name: Run Lighthouse CI
+        uses: treosh/lighthouse-ci-action@v11
+        with:
+          configPath: ./lighthouserc.json
+          uploadArtifacts: true
+          temporaryPublicStorage: true
+
+      - name: Upload Lighthouse results
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: lighthouse-results
+          path: .lighthouseci/
+          retention-days: 30

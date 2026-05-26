@@ -1,0 +1,53 @@
+[
+  {
+    "id": "prv-001",
+    "name": "Amara Johnson",
+    "title": "Senior Esthetician",
+    "type": "esthetician",
+    "specializations": ["facials", "treatments"],
+    "availability": {
+      "monday": { "start": "09:00", "end": "17:00" },
+      "tuesday": { "start": "09:00", "end": "17:00" },
+      "wednesday": { "start": "09:00", "end": "17:00" },
+      "thursday": { "start": "09:00", "end": "17:00" },
+      "friday": { "start": "09:00", "end": "15:00" },
+      "saturday": null,
+      "sunday": null
+    },
+    "image": "amara_johnson.png"
+  },
+  {
+    "id": "prv-002",
+    "name": "Dr. Temi Okonkwo",
+    "title": "Skin Specialist",
+    "type": "specialist",
+    "specializations": ["consultations", "treatments", "packages"],
+    "availability": {
+      "monday": { "start": "10:00", "end": "18:00" },
+      "tuesday": { "start": "10:00", "end": "18:00" },
+      "wednesday": null,
+      "thursday": { "start": "10:00", "end": "18:00" },
+      "friday": { "start": "10:00", "end": "18:00" },
+      "saturday": { "start": "10:00", "end": "14:00" },
+      "sunday": null
+    },
+    "image": "temi_okonkwo.png"
+  },
+  {
+    "id": "prv-003",
+    "name": "Chioma Adeyemi",
+    "title": "Esthetician",
+    "type": "esthetician",
+    "specializations": ["facials", "add-ons"],
+    "availability": {
+      "monday": { "start": "08:00", "end": "16:00" },
+      "tuesday": { "start": "08:00", "end": "16:00" },
+      "wednesday": { "start": "08:00", "end": "16:00" },
+      "thursday": { "start": "08:00", "end": "16:00" },
+      "friday": { "start": "08:00", "end": "16:00" },
+      "saturday": { "start": "09:00", "end": "13:00" },
+      "sunday": null
+    },
+    "image": "chioma_adeyemi.png"
+  }
+]

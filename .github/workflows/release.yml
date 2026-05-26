@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      deploy_to_production:
+        description: 'Deploy to production'
+        required: true
+        default: false
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+env:
+  NODE_VERSION: '18'
+
+jobs:
+  verify:
+    name: Verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Run lint
+        run: yarn lint
+
+      - name: Run type check
+        run: yarn typecheck
+
+      - name: Run unit tests
+        run: yarn test
+
+      - name: Build
+        run: yarn build
+        env:
+          GATSBY_AUTH_KEY: ${{ secrets.GATSBY_AUTH_KEY }}
+          GATSBY_BASE_API: ${{ vars.GATSBY_BASE_API || 'https://api.paystack.co' }}
+          GATSBY_PUSHER_KEY: ${{ secrets.GATSBY_PUSHER_KEY }}
+          GATSBY_PUSHER_APP_ID: ${{ secrets.GATSBY_PUSHER_APP_ID }}
+          GATSBY_PUSHER_SECRET: ${{ secrets.GATSBY_PUSHER_SECRET }}
+          GATSBY_TERMINAL_ID: ${{ secrets.GATSBY_TERMINAL_ID }}
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-build
+          path: public/
+          retention-days: 30
+
+  e2e-smoke:
+    name: E2E Smoke Tests
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'yarn'
+
+      - name: Install dependencies
+        run: yarn install --frozen-lockfile
+
+      - name: Install Playwright browsers
+        run: npx playwright install chromium --with-deps
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: public/
+
+      - name: Run smoke tests
+        run: yarn e2e --project=chromium --grep="@smoke"
+
+      - name: Upload test results
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: smoke-test-results
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+
+  deploy-staging:
+    name: Deploy to Staging
+    needs: [verify, e2e-smoke]
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: public/
+
+      - name: Deploy to Gatsby Cloud Staging
+        run: |
+          echo "Deploying to staging environment..."
+          # Add your deployment command here
+          # Example: npx gatsby-cli deploy --site-id=${{ secrets.GATSBY_STAGING_SITE_ID }}
+          echo "Staging deployment completed"
+
+  deploy-production:
+    name: Deploy to Production
+    needs: deploy-staging
+    runs-on: ubuntu-latest
+    if: github.event.inputs.deploy_to_production == 'true' || github.ref == 'refs/heads/main'
+    environment: production
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: production-build
+          path: public/
+
+      - name: Deploy to Gatsby Cloud Production
+        run: |
+          echo "Deploying to production environment..."
+          # Add your deployment command here
+          # Example: npx gatsby-cli deploy --site-id=${{ secrets.GATSBY_PRODUCTION_SITE_ID }}
+          echo "Production deployment completed"
+
+      - name: Notify deployment success
+        run: |
+          echo "🚀 Production deployment successful!"
+          echo "Version: ${{ github.sha }}"

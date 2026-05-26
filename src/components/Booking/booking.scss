@@ -1,0 +1,237 @@
+.booking {
+  max-width: 800px;
+  margin: 0 auto;
+  padding: 2rem 0;
+
+  &__title {
+    font-size: 2rem;
+    margin-bottom: 2rem;
+    color: var(--secondary-color);
+  }
+
+  &__summary {
+    background: var(--primary-color);
+    border-radius: 12px;
+    padding: 1.5rem;
+    margin-bottom: 2rem;
+    box-shadow: 0 2px 8px var(--shadow);
+
+    h2 {
+      font-size: 1.1rem;
+      margin: 0 0 1rem;
+      color: var(--secondary-color);
+    }
+
+    ul {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+
+      li {
+        display: flex;
+        justify-content: space-between;
+        padding: 0.5rem 0;
+        border-bottom: 1px solid var(--secondary-color-alpha-20);
+
+        &:last-child {
+          border-bottom: none;
+        }
+      }
+    }
+  }
+
+  &__totals {
+    display: flex;
+    justify-content: space-between;
+    margin-top: 1rem;
+    padding-top: 1rem;
+    border-top: 2px solid var(--secondary-color-alpha-20);
+    font-weight: 600;
+  }
+
+  &__section {
+    margin-bottom: 2rem;
+
+    h2 {
+      font-size: 1.25rem;
+      margin-bottom: 1rem;
+      color: var(--secondary-color);
+    }
+  }
+
+  &__selected {
+    margin-top: 0.5rem;
+    padding: 0.5rem 1rem;
+    background: var(--accent-color-alpha-20);
+    border-radius: 4px;
+    font-size: 0.9rem;
+    color: var(--accent-color);
+  }
+
+  &__calendar {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+    gap: 0.5rem;
+  }
+
+  &__providers {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+    gap: 1rem;
+  }
+
+  &__timeslots {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+    gap: 0.5rem;
+  }
+
+  &__actions {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    margin-top: 2rem;
+    padding-top: 2rem;
+    border-top: 1px solid var(--secondary-color-alpha-20);
+  }
+
+  &__back,
+  &__continue {
+    padding: 0.875rem 1.5rem;
+    border-radius: 8px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  &__back {
+    background: transparent;
+    border: 1px solid var(--secondary-color-alpha-20);
+    color: var(--secondary-color);
+
+    &:hover {
+      border-color: var(--secondary-color);
+    }
+  }
+
+  &__continue {
+    background: var(--accent-color);
+    border: none;
+    color: var(--primary-color);
+
+    &:hover:not(:disabled) {
+      background: var(--accent-color-alpha-70);
+    }
+
+    &:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+  }
+}
+
+.booking-empty {
+  text-align: center;
+  padding: 4rem 2rem;
+
+  h2 {
+    margin-bottom: 1rem;
+    color: var(--secondary-color);
+  }
+
+  p {
+    margin-bottom: 2rem;
+    color: var(--link-color);
+  }
+
+  button {
+    padding: 0.875rem 2rem;
+    background: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: var(--primary-color);
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+
+    &:hover {
+      background: var(--accent-color-alpha-70);
+    }
+  }
+}
+
+.date-btn,
+.time-btn,
+.provider-btn {
+  padding: 0.75rem 1rem;
+  background: var(--primary-color);
+  border: 1px solid var(--secondary-color-alpha-20);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: center;
+
+  &:hover:not(:disabled) {
+    border-color: var(--accent-color);
+  }
+
+  &:focus {
+    outline: 2px solid var(--accent-color);
+    outline-offset: 2px;
+  }
+
+  &--selected {
+    background: var(--accent-color);
+    border-color: var(--accent-color);
+    color: var(--primary-color);
+  }
+
+  &--unavailable {
+    opacity: 0.4;
+    cursor: not-allowed;
+    text-decoration: line-through;
+  }
+}
+
+.provider-btn {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+
+  strong {
+    font-size: 1rem;
+  }
+
+  span {
+    font-size: 0.85rem;
+    color: var(--link-color);
+  }
+
+  &--selected span {
+    color: var(--primary-color);
+  }
+}
+
+@media (max-width: 600px) {
+  .booking {
+    padding: 1rem;
+
+    &__actions {
+      flex-direction: column-reverse;
+    }
+
+    &__back,
+    &__continue {
+      width: 100%;
+    }
+  }
+
+  .booking__calendar {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .booking__timeslots {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
