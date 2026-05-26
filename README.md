@@ -40,3 +40,6 @@ This app simulates an in-person experience in a restaurant where a customer come
     
     You should add your environment variable in your `.env` file. Kindly check the `.env.sample` file  for the required environment variables. 
 
+## 📋 Planning docs
+
+- [Salon operations adaptation implementation plan](./docs/salon-operations-implementation-plan.md)
