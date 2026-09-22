@@ -1,55 +1,39 @@
 import '@testing-library/jest-dom'
+import React from 'react'
+import { vi, beforeAll, afterAll } from 'vitest'
 
-// Mock Gatsby's navigate function
-jest.mock('gatsby', () => {
-  const React = require('react')
-  const gatsby = jest.requireActual('gatsby')
-
+vi.mock('gatsby', () => {
   return {
-    ...gatsby,
-    graphql: jest.fn(),
-    Link: jest.fn().mockImplementation(
-      ({
-        activeClassName,
-        activeStyle,
-        getProps,
-        innerRef,
-        partiallyActive,
-        ref,
-        replace,
-        to,
-        ...rest
-      }) =>
-        React.createElement('a', {
-          ...rest,
-          href: to,
-        })
-    ),
-    StaticQuery: jest.fn(),
-    useStaticQuery: jest.fn(),
-    navigate: jest.fn(),
+    graphql: vi.fn(),
+    Link: vi
+      .fn()
+      .mockImplementation(({ to, children, ...rest }) =>
+        React.createElement('a', { ...rest, href: to }, children)
+      ),
+    StaticQuery: vi.fn(),
+    useStaticQuery: vi.fn(() => ({
+      allFile: { edges: [] },
+    })),
+    navigate: vi.fn(),
   }
 })
 
-// Mock Pusher
-jest.mock('pusher-js', () => {
-  return jest.fn().mockImplementation(() => ({
-    subscribe: jest.fn().mockReturnValue({
-      bind: jest.fn(),
-      unbind: jest.fn(),
+vi.mock('pusher-js', () => {
+  return vi.fn().mockImplementation(() => ({
+    subscribe: vi.fn().mockReturnValue({
+      bind: vi.fn(),
+      unbind: vi.fn(),
     }),
-    unsubscribe: jest.fn(),
-    disconnect: jest.fn(),
+    unsubscribe: vi.fn(),
+    disconnect: vi.fn(),
   }))
 })
 
-// Mock environment variables
 process.env.GATSBY_PUSHER_KEY = 'test-pusher-key'
 process.env.GATSBY_BASE_API = 'https://api.paystack.co'
 process.env.GATSBY_AUTH_KEY = 'test-auth-key'
 process.env.GATSBY_TERMINAL_ID = 'test-terminal-id'
 
-// Suppress console errors in tests (optional)
 const originalError = console.error
 beforeAll(() => {
   console.error = (...args: unknown[]) => {

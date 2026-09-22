@@ -1,11 +1,9 @@
 /**
  * Lookup Client API Endpoint
  * GET /api/clients/lookup
- * 
- * Query params:
- * - email: client email address
- * - phone: client phone number (alternative)
  */
+
+import { findClient } from '../_store'
 
 export default async function lookupClient(req, res) {
   if (req.method !== 'GET') {
@@ -22,45 +20,7 @@ export default async function lookupClient(req, res) {
       })
     }
 
-    // In real implementation, would query database
-    // For now, simulate lookup with sample data
-
-    const sampleClients = [
-      {
-        id: 'clt-001',
-        firstName: 'Adaeze',
-        lastName: 'Obi',
-        email: 'adaeze.obi@example.com',
-        phone: '+2348012345678',
-        consentAccepted: true,
-        intakeCompleted: true,
-        previousVisits: 5,
-        preferredProvider: 'prv-001',
-        lastVisit: '2024-01-15',
-      },
-      {
-        id: 'clt-002',
-        firstName: 'Folake',
-        lastName: 'Adeyemi',
-        email: 'folake.adeyemi@example.com',
-        phone: '+2348023456789',
-        consentAccepted: true,
-        intakeCompleted: true,
-        previousVisits: 2,
-        preferredProvider: null,
-        lastVisit: '2024-02-01',
-      },
-    ]
-
-    // Search by email or phone
-    const searchEmail = email?.toLowerCase()
-    const searchPhone = phone?.replace(/\D/g, '')
-
-    const client = sampleClients.find((c) => {
-      if (searchEmail && c.email.toLowerCase() === searchEmail) return true
-      if (searchPhone && c.phone.replace(/\D/g, '').includes(searchPhone)) return true
-      return false
-    })
+    const client = findClient({ email, phone })
 
     if (!client) {
       return res.status(404).json({

@@ -1,4 +1,5 @@
-import { Page, Locator, expect } from '@playwright/test'
+import { Page, Locator } from '@playwright/test'
+import { normalizeServiceId } from '../helpers/ids'
 
 /**
  * Page Object for Home/Service Discovery page
@@ -13,9 +14,9 @@ export class HomePage {
 
   constructor(page: Page) {
     this.page = page
-    this.serviceCards = page.locator('[data-testid="service-card"], .product')
-    this.bookingButton = page.locator('[data-testid="proceed-to-booking"], .nav__cart')
-    this.bookingCount = page.locator('[data-testid="booking-count"], .nav__cart span')
+    this.serviceCards = page.locator('[data-testid^="service-card-"]')
+    this.bookingButton = page.locator('[data-testid="proceed-to-booking"]')
+    this.bookingCount = page.locator('[data-testid="booking-count"]')
     this.categoryFilters = page.locator('[data-testid="category-filter"]')
     this.searchInput = page.locator('[data-testid="service-search"]')
   }
@@ -33,10 +34,13 @@ export class HomePage {
     return this.serviceCards.count()
   }
 
+  async addService(serviceId: string): Promise<void> {
+    return this.addServiceToBooking(serviceId)
+  }
+
   async addServiceToBooking(serviceId: string): Promise<void> {
-    const addButton = this.page.locator(
-      `[data-testid="add-service-${serviceId}"], .product:has([data-id="${serviceId}"]) .product-meta__cart, .product:nth-child(${serviceId}) .product-meta__cart`
-    )
+    const id = normalizeServiceId(serviceId)
+    const addButton = this.page.locator(`[data-testid="add-service-${id}"]`)
     await addButton.click()
   }
 
@@ -46,7 +50,16 @@ export class HomePage {
   }
 
   async proceedToBooking(): Promise<void> {
-    await this.bookingButton.click()
+    const continueButton = this.page.locator('[data-testid="proceed-to-booking"]')
+    if (await continueButton.count()) {
+      await continueButton.click()
+      return
+    }
+    await this.page.goto('/booking')
+  }
+
+  async proceedToCheckout(): Promise<void> {
+    await this.page.locator('.nav__cart').click()
   }
 
   async filterByCategory(category: string): Promise<void> {
@@ -56,28 +69,34 @@ export class HomePage {
 
   async searchServices(query: string): Promise<void> {
     await this.searchInput.fill(query)
-    await this.page.waitForTimeout(300) // debounce
+    await this.page.waitForTimeout(300)
   }
 
   async getServicePrice(serviceId: string): Promise<string> {
+    const id = normalizeServiceId(serviceId)
     const priceElement = this.page.locator(
-      `[data-testid="service-${serviceId}"] .service-price, .product:nth-child(${serviceId}) .product-meta__price`
+      `[data-testid="service-card-${id}"] [data-testid="service-price"]`
     )
     return (await priceElement.textContent()) || ''
   }
 
   async getServiceDuration(serviceId: string): Promise<string> {
-    const durationElement = this.page.locator(`[data-testid="service-${serviceId}"] .service-duration`)
+    const id = normalizeServiceId(serviceId)
+    const durationElement = this.page.locator(
+      `[data-testid="service-card-${id}"] [data-testid="service-duration"]`
+    )
     return (await durationElement.textContent()) || ''
   }
 
   async isServiceAvailable(serviceId: string): Promise<boolean> {
-    const addButton = this.page.locator(`[data-testid="add-service-${serviceId}"]`)
+    const id = normalizeServiceId(serviceId)
+    const addButton = this.page.locator(`[data-testid="add-service-${id}"]`)
     return addButton.isEnabled()
   }
 
   async viewServiceDetails(serviceId: string): Promise<void> {
-    const serviceCard = this.page.locator(`[data-testid="service-card-${serviceId}"]`)
+    const id = normalizeServiceId(serviceId)
+    const serviceCard = this.page.locator(`[data-testid="service-card-${id}"]`)
     await serviceCard.click()
   }
 

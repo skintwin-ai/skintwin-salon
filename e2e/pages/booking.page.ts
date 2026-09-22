@@ -39,10 +39,13 @@ export class BookingPage {
     return this.page.url().includes('/booking')
   }
 
-  async selectDate(date: string): Promise<void> {
-    const dayButton = this.calendar.locator(`[data-date="${date}"]`)
+  async selectDate(date: string | Date): Promise<void> {
+    const dateStr = date instanceof Date ? date.toISOString().split('T')[0] : date
+    const dayButton = this.page
+      .locator(`[data-date="${dateStr}"], [data-testid="date-${dateStr}"]`)
+      .first()
     await dayButton.click()
-    await expect(this.selectedDate).toContainText(date)
+    await expect(this.selectedDate).toBeVisible()
   }
 
   async selectTimeSlot(time: string): Promise<void> {

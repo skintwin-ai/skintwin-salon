@@ -13,6 +13,7 @@ export interface ServiceSelection {
  * Appointment details
  */
 export interface Appointment {
+  id?: string
   date: string
   startTime: string
   endTime: string
@@ -82,8 +83,22 @@ export interface BookingContextValue extends BookingState {
 
   // Utility
   resetBooking: () => void
-  getTotalPrice: (servicesList: any[]) => number
-  getTotalDuration: (servicesList: any[]) => number
+  getTotalPrice: (
+    servicesList: Array<{
+      id: string
+      price: number
+      durationMinutes?: number
+      bufferMinutes?: number
+    }>
+  ) => number
+  getTotalDuration: (
+    servicesList: Array<{
+      id: string
+      price: number
+      durationMinutes?: number
+      bufferMinutes?: number
+    }>
+  ) => number
 
   // Legacy compatibility (for existing cart.js)
   productIds: string[]
@@ -97,11 +112,30 @@ const initialCheckout: CheckoutState = {
   status: 'idle',
 }
 
+const STORAGE_KEY = 'skintwin-salon-booking'
+
 const initialState: BookingState = {
   services: [],
   appointment: null,
   client: null,
   checkout: initialCheckout,
+}
+
+const readStoredBooking = (): BookingState => {
+  if (typeof window === 'undefined') return initialState
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return initialState
+    const parsed = JSON.parse(raw)
+    return {
+      services: parsed.services || [],
+      appointment: parsed.appointment || null,
+      client: parsed.client || null,
+      checkout: { ...initialCheckout, ...(parsed.checkout || {}) },
+    }
+  } catch {
+    return initialState
+  }
 }
 
 export const BookingContext = createContext<BookingContextValue | undefined>(undefined)
@@ -110,10 +144,19 @@ export const BookingContext = createContext<BookingContextValue | undefined>(und
 export const CartContext = BookingContext
 
 const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [services, setServices] = useState<ServiceSelection[]>([])
-  const [appointment, setAppointmentState] = useState<Appointment | null>(null)
-  const [client, setClientState] = useState<Client | null>(null)
-  const [checkout, setCheckout] = useState<CheckoutState>(initialCheckout)
+  const stored = readStoredBooking()
+  const [services, setServices] = useState<ServiceSelection[]>(stored.services)
+  const [appointment, setAppointmentState] = useState<Appointment | null>(stored.appointment)
+  const [client, setClientState] = useState<Client | null>(stored.client)
+  const [checkout, setCheckout] = useState<CheckoutState>(stored.checkout)
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    window.sessionStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ services, appointment, client, checkout })
+    )
+  }, [services, appointment, client, checkout])
 
   // Legacy productIds for backward compatibility with existing cart page
   const productIds = useMemo(() => services.map((s) => s.serviceId), [services])
@@ -137,15 +180,16 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setServices((prev) => prev.filter((s) => s.serviceId !== serviceId))
   }, [])
 
-  const updateServiceQuantity = useCallback((serviceId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeService(serviceId)
-      return
-    }
-    setServices((prev) =>
-      prev.map((s) => (s.serviceId === serviceId ? { ...s, quantity } : s))
-    )
-  }, [removeService])
+  const updateServiceQuantity = useCallback(
+    (serviceId: string, quantity: number) => {
+      if (quantity <= 0) {
+        removeService(serviceId)
+        return
+      }
+      setServices((prev) => prev.map((s) => (s.serviceId === serviceId ? { ...s, quantity } : s)))
+    },
+    [removeService]
+  )
 
   const clearServices = useCallback(() => {
     setServices([])
@@ -200,11 +244,21 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAppointmentState(null)
     setClientState(null)
     setCheckout(initialCheckout)
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(STORAGE_KEY)
+    }
   }, [])
 
   // Utility functions
   const getTotalPrice = useCallback(
-    (servicesList: any[]) => {
+    (
+      servicesList: Array<{
+        id: string
+        price: number
+        durationMinutes?: number
+        bufferMinutes?: number
+      }>
+    ) => {
       return services.reduce((total, selection) => {
         const service = servicesList.find((s) => s.id === selection.serviceId)
         if (!service) return total
@@ -226,18 +280,26 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
   )
 
   const getTotalDuration = useCallback(
-    (servicesList: any[]) => {
+    (
+      servicesList: Array<{
+        id: string
+        price: number
+        durationMinutes?: number
+        bufferMinutes?: number
+      }>
+    ) => {
       return services.reduce((total, selection) => {
         const service = servicesList.find((s) => s.id === selection.serviceId)
         if (!service) return total
 
-        let duration = (service.durationMinutes + (service.bufferMinutes || 0)) * selection.quantity
+        let duration =
+          ((service.durationMinutes || 0) + (service.bufferMinutes || 0)) * selection.quantity
 
         // Add add-on durations
         selection.addOns.forEach((addOnId) => {
           const addOn = servicesList.find((s) => s.id === addOnId)
           if (addOn) {
-            duration += addOn.durationMinutes
+            duration += addOn.durationMinutes || 0
           }
         })
 
@@ -248,9 +310,12 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
   )
 
   // Legacy compatibility for existing cart.js page
-  const updateCart = useCallback((id: number) => {
-    addService(id.toString())
-  }, [addService])
+  const updateCart = useCallback(
+    (id: number) => {
+      addService(id.toString())
+    },
+    [addService]
+  )
 
   const resetCart = useCallback(() => {
     clearServices()
@@ -309,7 +374,11 @@ export const useBooking = (): BookingContextValue => {
   return context
 }
 
-// Default export for Gatsby wrapRootElement
-export default ({ element }: { element: React.ReactNode }) => (
+const RootBookingProvider = ({ element }: { element: React.ReactNode }) => (
   <BookingContextProvider>{element}</BookingContextProvider>
 )
+
+RootBookingProvider.displayName = 'RootBookingProvider'
+
+// Default export for Gatsby wrapRootElement
+export default RootBookingProvider

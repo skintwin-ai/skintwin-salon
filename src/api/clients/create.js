@@ -4,6 +4,9 @@
  */
 
 import crypto from 'crypto'
+import { parseRequestBody } from '../../utils/http'
+import { findClient, saveClient } from '../_store'
+import { syncWithPlatform } from '../integrations/skintwin-sync'
 
 export default async function createClient(req, res) {
   if (req.method !== 'POST') {
@@ -11,10 +14,9 @@ export default async function createClient(req, res) {
   }
 
   try {
-    const data = JSON.parse(req.body)
-
-    // Validate required fields
+    const data = parseRequestBody(req)
     const requiredFields = ['firstName', 'lastName', 'email', 'phone']
+
     for (const field of requiredFields) {
       if (!data[field]) {
         return res.status(400).json({
@@ -24,7 +26,6 @@ export default async function createClient(req, res) {
       }
     }
 
-    // Validate email format
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
     if (!emailRegex.test(data.email)) {
       return res.status(400).json({
@@ -33,7 +34,6 @@ export default async function createClient(req, res) {
       })
     }
 
-    // Validate phone format (basic validation)
     const phoneRegex = /^\+?[\d\s-]{10,}$/
     if (!phoneRegex.test(data.phone)) {
       return res.status(400).json({
@@ -42,11 +42,12 @@ export default async function createClient(req, res) {
       })
     }
 
-    // Generate client ID using crypto for secure unique IDs
-    const clientId = `CLT_${Date.now()}_${crypto.randomUUID().split('-')[0]}`
+    const existing = findClient({ email: data.email })
+    const clientId =
+      existing?.id || data.id || `CLT_${Date.now()}_${crypto.randomUUID().split('-')[0]}`
 
-    // Create client object
     const client = {
+      ...(existing || {}),
       id: clientId,
       firstName: data.firstName,
       lastName: data.lastName,
@@ -54,18 +55,24 @@ export default async function createClient(req, res) {
       phone: data.phone,
       consentAccepted: data.consentAccepted || false,
       intakeCompleted: data.intakeCompleted || false,
-      preferences: data.preferences || {},
-      notes: data.notes || '',
-      previousVisits: 0,
-      preferredProvider: data.preferredProvider || null,
-      createdAt: new Date().toISOString(),
+      preferences: data.preferences || existing?.preferences || {},
+      notes: data.notes || existing?.notes || '',
+      previousVisits: existing?.previousVisits || 0,
+      preferredProvider: data.preferredProvider || existing?.preferredProvider || null,
+      createdAt: existing?.createdAt || new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
 
-    res.status(201).json({
+    saveClient(client)
+    const platform = await syncWithPlatform({ action: 'sync_client', payload: client })
+
+    res.status(existing ? 200 : 201).json({
       status: true,
-      message: 'Client created successfully',
-      data: client,
+      message: existing ? 'Client updated successfully' : 'Client created successfully',
+      data: {
+        ...client,
+        platform,
+      },
     })
   } catch (error) {
     console.error('Error creating client:', error)

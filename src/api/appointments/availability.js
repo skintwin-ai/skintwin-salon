@@ -1,15 +1,11 @@
 /**
  * Check Availability API Endpoint
  * GET /api/appointments/availability
- * 
- * Query params:
- * - date: YYYY-MM-DD
- * - providerId: optional provider ID
- * - durationMinutes: required duration
  */
 
-import crypto from 'crypto'
 import Providers from '../../data/providers.json'
+import { listAppointments } from '../_store'
+import { weekdayFromDate, timeToMinutes, minutesToTime, slotsOverlap } from '../../utils/booking'
 
 export default async function checkAvailability(req, res) {
   if (req.method !== 'GET') {
@@ -26,13 +22,11 @@ export default async function checkAvailability(req, res) {
       })
     }
 
-    // Parse the date and get day of week
-    const requestDate = new Date(date)
-    const dayOfWeek = requestDate.toLocaleDateString('en-US', { weekday: 'lowercase' })
+    const dayOfWeek = weekdayFromDate(date)
+    const duration = parseInt(durationMinutes, 10) || 60
 
-    // Get providers to check
     const providersToCheck = providerId
-      ? Providers.filter((p) => p.id === providerId)
+      ? Providers.filter((provider) => provider.id === providerId)
       : Providers
 
     if (providersToCheck.length === 0) {
@@ -42,7 +36,13 @@ export default async function checkAvailability(req, res) {
       })
     }
 
-    // Generate time slots for each provider
+    const booked = listAppointments().filter(
+      (appointment) =>
+        appointment.date === date &&
+        appointment.status !== 'cancelled' &&
+        appointment.status !== 'no_show'
+    )
+
     const availability = {}
 
     for (const provider of providersToCheck) {
@@ -57,37 +57,38 @@ export default async function checkAvailability(req, res) {
         continue
       }
 
-      // Generate time slots
       const slots = []
       const [startHour, startMin] = dayAvailability.start.split(':').map(Number)
       const [endHour, endMin] = dayAvailability.end.split(':').map(Number)
-      const duration = parseInt(durationMinutes, 10)
 
       let currentMinutes = startHour * 60 + startMin
       const endMinutes = endHour * 60 + endMin
+      const providerBookings = booked.filter(
+        (appointment) => appointment.providerId === provider.id
+      )
 
-      // Generate 30-minute slots
       while (currentMinutes + duration <= endMinutes) {
-        const hours = Math.floor(currentMinutes / 60)
-        const mins = currentMinutes % 60
-        const time = `${hours.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}`
-
-        // Simulate some slots being booked (in real app, would check database)
-        // Using crypto for deterministic pseudo-random simulation
-        const randomByte = crypto.randomBytes(1)[0]
-        const isBooked = randomByte > 178 // ~30% chance of being booked
+        const time = minutesToTime(currentMinutes)
+        const slotEnd = currentMinutes + duration
+        const overlapsBooking = providerBookings.some((appointment) => {
+          const bookedStart = timeToMinutes(appointment.startTime)
+          const bookedEnd = appointment.endTime
+            ? timeToMinutes(appointment.endTime)
+            : bookedStart + duration
+          return slotsOverlap(currentMinutes, slotEnd, bookedStart, bookedEnd)
+        })
 
         slots.push({
           time,
-          available: !isBooked,
-          endTime: calculateEndTime(time, duration),
+          available: !overlapsBooking,
+          endTime: minutesToTime(slotEnd),
         })
 
         currentMinutes += 30
       }
 
       availability[provider.id] = {
-        available: slots.some((s) => s.available),
+        available: slots.some((slot) => slot.available),
         provider: {
           id: provider.id,
           name: provider.name,
@@ -103,7 +104,7 @@ export default async function checkAvailability(req, res) {
       status: true,
       data: {
         date,
-        durationMinutes: parseInt(durationMinutes, 10),
+        durationMinutes: duration,
         availability,
       },
     })
@@ -115,12 +116,4 @@ export default async function checkAvailability(req, res) {
       error: error.message,
     })
   }
-}
-
-function calculateEndTime(startTime, durationMinutes) {
-  const [hours, mins] = startTime.split(':').map(Number)
-  const totalMinutes = hours * 60 + mins + durationMinutes
-  const endHours = Math.floor(totalMinutes / 60)
-  const endMins = totalMinutes % 60
-  return `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`
 }

@@ -61,14 +61,14 @@ test.describe('Keyboard Navigation @accessibility', () => {
     await page.goto('/')
 
     // Tab to first add-to-cart button
-    let addButton = page.locator('.product-meta__cart').first()
+    let addButton = page.locator('[data-testid^="add-service-"]').first()
     await addButton.focus()
 
     // Activate with Enter
     await page.keyboard.press('Enter')
 
     // Verify service was added
-    const badge = page.locator('.nav__cart span')
+    const badge = page.locator('[data-testid="booking-count"]')
     await expect(badge).toHaveText('1')
   })
 
@@ -76,7 +76,7 @@ test.describe('Keyboard Navigation @accessibility', () => {
     await page.goto('/')
 
     // Add a service first
-    await page.locator('.product-meta__cart').first().click()
+    await page.locator('[data-testid^="add-service-"]').first().click()
 
     // Focus cart link
     const cartLink = page.locator('.nav__cart')
@@ -120,7 +120,7 @@ test.describe('Focus Management @accessibility', () => {
     await page.goto('/')
 
     // Add service and go to cart
-    await page.locator('.product-meta__cart').first().click()
+    await page.locator('[data-testid^="add-service-"]').first().click()
     await page.locator('.nav__cart').click()
 
     // Tab through cart page
@@ -197,7 +197,7 @@ test.describe('Screen Reader Support @accessibility', () => {
     await page.goto('/')
 
     // Add service and go to cart
-    await page.locator('.product-meta__cart').first().click()
+    await page.locator('[data-testid^="add-service-"]').first().click()
     await page.locator('.nav__cart').click()
 
     // Check for any input fields
@@ -235,7 +235,7 @@ test.describe('Touch Targets @accessibility', () => {
   test('should have minimum touch target size for buttons', async ({ page }) => {
     await page.goto('/')
 
-    const buttons = page.locator('.product-meta__cart')
+    const buttons = page.locator('[data-testid^="add-service-"]')
     const count = await buttons.count()
 
     for (let i = 0; i < Math.min(count, 6); i++) {
@@ -246,9 +246,7 @@ test.describe('Touch Targets @accessibility', () => {
         // Minimum recommended touch target is 44x44px
         // But we'll warn rather than fail if slightly smaller
         if (box.width < 32 || box.height < 32) {
-          console.warn(
-            `Small touch target: ${box.width}x${box.height}px (recommended: 44x44px)`
-          )
+          console.warn(`Small touch target: ${box.width}x${box.height}px (recommended: 44x44px)`)
         }
 
         // Should be at least reasonably sized
@@ -261,7 +259,7 @@ test.describe('Touch Targets @accessibility', () => {
   test('should have adequate spacing between interactive elements', async ({ page }) => {
     await page.goto('/')
 
-    const buttons = page.locator('.product-meta__cart')
+    const buttons = page.locator('[data-testid^="add-service-"]')
     const count = await buttons.count()
 
     if (count >= 2) {

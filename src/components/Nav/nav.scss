@@ -4,14 +4,26 @@
   justify-content: space-between;
 
   &__brand {
-
     svg {
       margin-inline-end: 8px;
     }
   }
 
+  &__brand-name {
+    margin-left: 8px;
+    font-weight: 600;
+    color: var(--secondary-color);
+  }
+
   &__items {
     display: flex;
+    align-items: center;
+    gap: 16px;
+  }
+
+  &__link {
+    color: var(--secondary-color);
+    font-weight: 600;
   }
 
   &__cart {

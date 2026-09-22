@@ -3,15 +3,18 @@
  * POST /api/clients/intake
  */
 
+import { parseRequestBody } from '../../utils/http'
+import { getClient, saveClient } from '../_store'
+import { syncWithPlatform } from '../integrations/skintwin-sync'
+
 export default async function submitIntake(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ status: false, message: 'Method not allowed' })
   }
 
   try {
-    const data = JSON.parse(req.body)
+    const data = parseRequestBody(req)
 
-    // Validate client ID
     if (!data.clientId) {
       return res.status(400).json({
         status: false,
@@ -19,19 +22,6 @@ export default async function submitIntake(req, res) {
       })
     }
 
-    // Validate required intake fields
-    const requiredFields = ['skinType', 'allergies', 'currentProducts']
-    const missingFields = requiredFields.filter((field) => data[field] === undefined)
-
-    // Allow empty arrays/strings but require field presence
-    if (missingFields.length > 0) {
-      return res.status(400).json({
-        status: false,
-        message: `Missing required intake fields: ${missingFields.join(', ')}`,
-      })
-    }
-
-    // Validate consent
     if (!data.consentAccepted) {
       return res.status(400).json({
         status: false,
@@ -39,16 +29,23 @@ export default async function submitIntake(req, res) {
       })
     }
 
-    // Create intake record
+    const existing = getClient(data.clientId)
+    if (!existing) {
+      return res.status(404).json({
+        status: false,
+        message: 'Client not found',
+      })
+    }
+
     const intake = {
       id: `INT_${Date.now()}`,
       clientId: data.clientId,
       submittedAt: new Date().toISOString(),
-      skinType: data.skinType,
+      skinType: data.skinType || 'unknown',
       skinConcerns: data.skinConcerns || [],
-      allergies: data.allergies,
+      allergies: data.allergies || [],
       medications: data.medications || '',
-      currentProducts: data.currentProducts,
+      currentProducts: data.currentProducts || [],
       previousTreatments: data.previousTreatments || '',
       medicalHistory: data.medicalHistory || '',
       pregnancyStatus: data.pregnancyStatus || 'not_applicable',
@@ -59,20 +56,31 @@ export default async function submitIntake(req, res) {
       marketingConsent: data.marketingConsent || false,
     }
 
-    // Update client record (in real implementation)
-    const clientUpdate = {
-      clientId: data.clientId,
+    const client = saveClient({
+      ...existing,
+      ...data,
+      id: data.clientId,
+      firstName: data.firstName || existing.firstName,
+      lastName: data.lastName || existing.lastName,
+      email: data.email || existing.email,
+      phone: data.phone || existing.phone,
       intakeCompleted: true,
       intakeId: intake.id,
+      consentAccepted: true,
+      skinType: intake.skinType,
+      allergies: intake.allergies,
       updatedAt: new Date().toISOString(),
-    }
+    })
+
+    const platform = await syncWithPlatform({ action: 'sync_client', payload: client })
 
     res.status(200).json({
       status: true,
       message: 'Intake form submitted successfully',
       data: {
         intake,
-        clientUpdate,
+        client,
+        platform,
       },
     })
   } catch (error) {

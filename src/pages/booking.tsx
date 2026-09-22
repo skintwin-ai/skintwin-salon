@@ -1,10 +1,16 @@
-import React, { useState, useContext, useMemo } from 'react'
+import React, { useState, useContext, useMemo, useEffect } from 'react'
 import { navigate } from 'gatsby'
 
 import { BookingContext } from '../context/booking-context'
 import { Layout } from '../components'
 import Services from '../data/services.json'
 import Providers from '../data/providers.json'
+import {
+  formatCurrency,
+  formatDuration,
+  resolveServiceSelections,
+  getSelectionTotals,
+} from '../utils/booking'
 
 import '../styles/global.scss'
 import '../components/Booking/booking.scss'
@@ -16,74 +22,48 @@ interface TimeSlot {
 
 const BookingPage: React.FC = () => {
   const context = useContext(BookingContext)
-  const [selectedDate, setSelectedDate] = useState<string>('')
-  const [selectedTime, setSelectedTime] = useState<string>('')
-  const [selectedProvider, setSelectedProvider] = useState<string>('')
+  const [selectedDate, setSelectedDate] = useState<string>(context?.appointment?.date || '')
+  const [selectedTime, setSelectedTime] = useState<string>(context?.appointment?.startTime || '')
+  const [selectedProvider, setSelectedProvider] = useState<string>(
+    context?.appointment?.providerId || ''
+  )
+  const [timeSlots, setTimeSlots] = useState<TimeSlot[]>([])
+  const [availabilityError, setAvailabilityError] = useState('')
+  const [loadingSlots, setLoadingSlots] = useState(false)
 
-  // Get services in booking
-  const bookedServices = useMemo(() => {
-    if (!context?.services) return []
-    return context.services.map((selection) => {
-      const service = Services.find((s) => s.id === selection.serviceId)
-      return { ...selection, service }
-    }).filter((s) => s.service)
-  }, [context?.services])
+  const bookedServices = useMemo(
+    () => resolveServiceSelections(context?.services || [], Services),
+    [context?.services]
+  )
 
-  // Calculate total duration
-  const totalDuration = useMemo(() => {
-    return bookedServices.reduce((total, item) => {
-      if (!item.service) return total
-      return total + (item.service.durationMinutes + (item.service.bufferMinutes || 0)) * item.quantity
-    }, 0)
-  }, [bookedServices])
+  const totals = useMemo(() => getSelectionTotals(bookedServices), [bookedServices])
 
-  // Calculate total price
-  const totalPrice = useMemo(() => {
-    return bookedServices.reduce((total, item) => {
-      if (!item.service) return total
-      return total + item.service.price * item.quantity
-    }, 0)
-  }, [bookedServices])
-
-  // Get available providers based on selected services
   const availableProviders = useMemo(() => {
     const requiredTypes = new Set<string>()
     bookedServices.forEach((item) => {
-      if (item.service?.providerTypes) {
-        item.service.providerTypes.forEach((type: string) => requiredTypes.add(type))
-      }
+      item.serviceId &&
+        Services.find((service) => service.id === item.serviceId)?.providerTypes?.forEach(
+          (type: string) => requiredTypes.add(type)
+        )
     })
 
-    return Providers.filter((provider) =>
-      requiredTypes.size === 0 || requiredTypes.has(provider.type)
+    return Providers.filter(
+      (provider) => requiredTypes.size === 0 || requiredTypes.has(provider.type)
     )
   }, [bookedServices])
 
-  // Generate time slots for selected date
-  const timeSlots = useMemo((): TimeSlot[] => {
-    const slots: TimeSlot[] = []
-    const startHour = 8
-    const endHour = 18
-
-    for (let hour = startHour; hour < endHour; hour++) {
-      for (const minute of [0, 30]) {
-        const time = `${hour.toString().padStart(2, '0')}:${minute.toString().padStart(2, '0')}`
-        // Simple availability check - in real app, would check against actual bookings
-        const available = selectedDate && selectedProvider ? Math.random() > 0.3 : true
-        slots.push({ time, available })
-      }
+  useEffect(() => {
+    if (!selectedProvider && availableProviders.length > 0) {
+      setSelectedProvider(availableProviders[0].id)
     }
-    return slots
-  }, [selectedDate, selectedProvider])
+  }, [availableProviders, selectedProvider])
 
-  // Generate next 30 days for date selection
   const availableDates = useMemo(() => {
     const dates: string[] = []
     const today = new Date()
     for (let i = 1; i <= 30; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
-      // Skip Sundays (day 0)
       if (date.getDay() !== 0) {
         dates.push(date.toISOString().split('T')[0])
       }
@@ -91,8 +71,54 @@ const BookingPage: React.FC = () => {
     return dates
   }, [])
 
+  useEffect(() => {
+    if (!selectedDate || !selectedProvider) {
+      setTimeSlots([])
+      return
+    }
+
+    let cancelled = false
+    setLoadingSlots(true)
+    setAvailabilityError('')
+
+    const params = new URLSearchParams({
+      date: selectedDate,
+      providerId: selectedProvider,
+      durationMinutes: String(totals.duration || 60),
+    })
+
+    fetch(`/api/appointments/availability?${params.toString()}`)
+      .then((response) => {
+        if (!response.ok) throw new Error('Unable to load availability')
+        return response.json()
+      })
+      .then((json) => {
+        if (cancelled) return
+        const providerAvail = json?.data?.availability?.[selectedProvider]
+        setTimeSlots(
+          (providerAvail?.slots || []).map((slot: TimeSlot) => ({
+            time: slot.time,
+            available: slot.available,
+          }))
+        )
+      })
+      .catch((error) => {
+        if (!cancelled) {
+          setAvailabilityError(error.message || 'Unable to load availability')
+          setTimeSlots([])
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingSlots(false)
+      })
+
+    return () => {
+      cancelled = true
+    }
+  }, [selectedDate, selectedProvider, totals.duration])
+
   const formatDate = (dateStr: string) => {
-    const date = new Date(dateStr)
+    const date = new Date(`${dateStr}T00:00:00`)
     return date.toLocaleDateString('en-NG', {
       weekday: 'short',
       month: 'short',
@@ -100,30 +126,13 @@ const BookingPage: React.FC = () => {
     })
   }
 
-  const formatCurrency = (amount: number) => {
-    return new Intl.NumberFormat('en-NG', {
-      style: 'currency',
-      currency: 'NGN',
-      minimumFractionDigits: 0,
-    }).format(amount)
-  }
-
-  const formatDuration = (minutes: number) => {
-    if (minutes < 60) return `${minutes} min`
-    const hours = Math.floor(minutes / 60)
-    const mins = minutes % 60
-    return mins > 0 ? `${hours}h ${mins}m` : `${hours}h`
-  }
-
   const handleContinue = () => {
     if (!selectedDate || !selectedTime || !selectedProvider) {
-      alert('Please select a date, time, and provider')
       return
     }
 
-    // Calculate end time
     const [hours, mins] = selectedTime.split(':').map(Number)
-    const endMinutes = hours * 60 + mins + totalDuration
+    const endMinutes = hours * 60 + mins + totals.duration
     const endHours = Math.floor(endMinutes / 60)
     const endMins = endMinutes % 60
     const endTime = `${endHours.toString().padStart(2, '0')}:${endMins.toString().padStart(2, '0')}`
@@ -133,7 +142,7 @@ const BookingPage: React.FC = () => {
       startTime: selectedTime,
       endTime,
       providerId: selectedProvider,
-      totalDurationMinutes: totalDuration,
+      totalDurationMinutes: totals.duration,
     })
 
     navigate('/intake')
@@ -143,9 +152,11 @@ const BookingPage: React.FC = () => {
     return (
       <Layout pageTitle="Booking">
         <div className="booking-empty">
-          <h2>No Services Selected</h2>
+          <h1>No Services Selected</h1>
           <p>Please select services before booking.</p>
-          <button onClick={() => navigate('/')}>Browse Services</button>
+          <button type="button" onClick={() => navigate('/')}>
+            Browse Services
+          </button>
         </div>
       </Layout>
     )
@@ -156,55 +167,67 @@ const BookingPage: React.FC = () => {
       <div className="booking">
         <h1 className="booking__title">Schedule Your Appointment</h1>
 
-        {/* Booking Summary */}
         <section className="booking__summary" data-testid="booking-summary">
           <h2>Selected Services</h2>
           <ul>
             {bookedServices.map((item) => (
               <li key={item.serviceId} data-service={item.serviceId}>
-                <span>{item.service?.name}</span>
-                <span>{formatDuration(item.service?.durationMinutes || 0)}</span>
+                <span>{item.name}</span>
+                <span>{formatDuration(item.durationMinutes)}</span>
               </li>
             ))}
           </ul>
           <div className="booking__totals">
-            <span data-testid="total-duration">Total: {formatDuration(totalDuration)}</span>
-            <span>{formatCurrency(totalPrice)}</span>
+            <span data-testid="total-duration">Total: {formatDuration(totals.duration)}</span>
+            <span>{formatCurrency(totals.price)}</span>
           </div>
         </section>
 
-        {/* Date Selection */}
         <section className="booking__section">
           <h2>Select Date</h2>
-          <div className="booking__calendar" data-testid="booking-calendar">
-            {availableDates.map((date) => (
-              <button
-                key={date}
-                data-date={date}
-                className={`date-btn ${selectedDate === date ? 'date-btn--selected' : ''}`}
-                onClick={() => setSelectedDate(date)}
-              >
-                {formatDate(date)}
-              </button>
-            ))}
+          <div className="booking__calendar" data-testid="booking-calendar" id="date-picker">
+            <div data-testid="date-picker" className="booking__calendar-grid">
+              {availableDates.map((date) => (
+                <button
+                  key={date}
+                  type="button"
+                  data-date={date}
+                  data-testid={`date-${date}`}
+                  className={`date-btn ${
+                    selectedDate === date ? 'date-btn--selected date-picker__day--selected' : ''
+                  }`}
+                  onClick={() => {
+                    setSelectedDate(date)
+                    setSelectedTime('')
+                  }}
+                >
+                  {formatDate(date)}
+                </button>
+              ))}
+            </div>
           </div>
           {selectedDate && (
             <div data-testid="selected-date" className="booking__selected">
-              Selected: {formatDate(selectedDate)}
+              Selected: {formatDate(selectedDate)} ({selectedDate})
             </div>
           )}
         </section>
 
-        {/* Provider Selection */}
         <section className="booking__section">
           <h2>Select Provider</h2>
           <div className="booking__providers" data-testid="provider-selector">
             {availableProviders.map((provider) => (
               <button
                 key={provider.id}
+                type="button"
                 data-provider={provider.id}
-                className={`provider-btn ${selectedProvider === provider.id ? 'provider-btn--selected' : ''}`}
-                onClick={() => setSelectedProvider(provider.id)}
+                className={`provider-btn ${
+                  selectedProvider === provider.id ? 'provider-btn--selected' : ''
+                }`}
+                onClick={() => {
+                  setSelectedProvider(provider.id)
+                  setSelectedTime('')
+                }}
               >
                 <strong>{provider.name}</strong>
                 <span>{provider.title}</span>
@@ -213,21 +236,37 @@ const BookingPage: React.FC = () => {
           </div>
           {selectedProvider && (
             <div data-testid="selected-provider" className="booking__selected">
-              Selected: {Providers.find((p) => p.id === selectedProvider)?.name}
+              Selected: {Providers.find((provider) => provider.id === selectedProvider)?.name}
             </div>
           )}
         </section>
 
-        {/* Time Selection */}
         <section className="booking__section">
           <h2>Select Time</h2>
+          {loadingSlots && <p data-testid="availability-loading">Checking availability…</p>}
+          {availabilityError && (
+            <p className="booking__error" data-testid="error-message" role="alert">
+              {availabilityError}
+              <button
+                type="button"
+                data-testid="retry-button"
+                onClick={() => setSelectedDate((value) => value)}
+              >
+                Try again
+              </button>
+            </p>
+          )}
           <div className="booking__timeslots" data-testid="time-slots">
             {timeSlots.map((slot) => (
               <button
                 key={slot.time}
+                type="button"
                 data-time={slot.time}
                 data-available={slot.available}
-                className={`time-btn ${selectedTime === slot.time ? 'time-btn--selected' : ''} ${!slot.available ? 'time-btn--unavailable' : ''}`}
+                data-testid={`time-slot-${slot.time}`}
+                className={`time-btn ${selectedTime === slot.time ? 'time-btn--selected selected' : ''} ${
+                  !slot.available ? 'time-btn--unavailable' : ''
+                }`}
                 onClick={() => slot.available && setSelectedTime(slot.time)}
                 disabled={!slot.available}
               >
@@ -238,13 +277,24 @@ const BookingPage: React.FC = () => {
           {selectedTime && (
             <div data-testid="selected-time" className="booking__selected">
               Selected: {selectedTime}
+              <span data-testid="appointment-end-time">
+                {' '}
+                –{' '}
+                {(() => {
+                  const [hours, mins] = selectedTime.split(':').map(Number)
+                  const end = hours * 60 + mins + totals.duration
+                  return `${Math.floor(end / 60)
+                    .toString()
+                    .padStart(2, '0')}:${(end % 60).toString().padStart(2, '0')}`
+                })()}
+              </span>
             </div>
           )}
         </section>
 
-        {/* Continue Button */}
         <div className="booking__actions">
           <button
+            type="button"
             className="booking__back"
             onClick={() => navigate('/')}
             data-testid="back-to-services"
@@ -252,6 +302,7 @@ const BookingPage: React.FC = () => {
             Back to Services
           </button>
           <button
+            type="button"
             className="booking__continue"
             onClick={handleContinue}
             disabled={!selectedDate || !selectedTime || !selectedProvider}
