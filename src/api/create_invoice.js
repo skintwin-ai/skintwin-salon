@@ -1,14 +1,19 @@
 import fetch from 'node-fetch'
+import { isLocalPaystackRail, localPaystackInvoice } from './integrations/paystack-rail'
 import { jsonBody, parseRequestBody } from '../utils/http'
 
 export default async function createInvoice(req, res) {
+  const payload = parseRequestBody(req)
+
+  if (isLocalPaystackRail()) {
+    return res.status(200).send(localPaystackInvoice(payload))
+  }
+
   const url = `${process.env.GATSBY_BASE_API}/paymentrequest`
   const headers = {
     'Content-Type': 'application/json',
     Authorization: `Bearer ${process.env.GATSBY_AUTH_KEY}`,
   }
-
-  const payload = parseRequestBody(req)
 
   try {
     await fetch(url, {

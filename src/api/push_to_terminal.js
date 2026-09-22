@@ -1,6 +1,12 @@
 import fetch from "node-fetch"
+import { isLocalPaystackRail, localPaystackTerminal } from "./integrations/paystack-rail"
 
 export default async function pushToTerminal(req, res) {
+  if (isLocalPaystackRail()) {
+    const body = typeof req.body === "string" ? JSON.parse(req.body || "{}") : req.body || {}
+    return res.status(200).send(localPaystackTerminal(body))
+  }
+
   const url = `${process.env.GATSBY_BASE_API}/terminal/${process.env.GATSBY_TERMINAL_ID}/event`
   const headers = {
     "Content-Type": "application/json",
