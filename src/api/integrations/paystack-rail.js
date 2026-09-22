@@ -11,7 +11,9 @@ function isPlaceholderKey(key) {
 }
 
 export function isLocalPaystackRail() {
-  return isPlaceholderKey(process.env.GATSBY_AUTH_KEY)
+  const key = process.env.GATSBY_AUTH_KEY || ''
+  if (isPlaceholderKey(key)) return true
+  return /^test[-_]/i.test(key) || key.length < 20
 }
 
 export function localPaystackInvoice(payload = {}) {
