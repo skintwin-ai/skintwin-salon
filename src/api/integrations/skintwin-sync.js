@@ -6,6 +6,7 @@
  */
 
 import { persistSync } from '../_store'
+import { authorizationForSync } from './platform-session.js'
 
 function mapStatus(internalStatus) {
   const statusMap = {
@@ -145,7 +146,7 @@ export async function syncWithPlatform({ action, payload }) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${key}`,
+        Authorization: authorizationForSync(payload) || `Bearer ${key}`,
       },
       body: JSON.stringify({
         action,

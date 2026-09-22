@@ -86,7 +86,7 @@ describe('skintwin sync', () => {
       expect.objectContaining({
         method: 'POST',
         headers: expect.objectContaining({
-          Authorization: 'Bearer platform-key',
+          Authorization: expect.stringMatching(/^Bearer stsess\./),
         }),
       })
     )
