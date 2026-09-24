@@ -25,8 +25,10 @@ export class IntakePage {
     this.lastNameInput = page.locator('[data-testid="last-name"], input[name="lastName"]')
     this.emailInput = page.locator('[data-testid="email"], input[name="email"]')
     this.phoneInput = page.locator('[data-testid="phone"], input[name="phone"]')
-    this.consentCheckbox = page.locator('[data-testid="consent-checkbox"], input[type="checkbox"][name="consent"]')
-    this.lookupButton = page.locator('[data-testid="lookup-client"]')
+    this.consentCheckbox = page.locator(
+      '[data-testid="consent-checkbox"], input[type="checkbox"][name="consent"]'
+    )
+    this.lookupButton = page.locator('[data-testid="lookup-client"], [data-testid="lookup-button"]')
     this.lookupEmailInput = page.locator('[data-testid="lookup-email"]')
     this.continueButton = page.locator('[data-testid="continue-to-checkout"]')
     this.backButton = page.locator('[data-testid="back-to-booking"]')
@@ -41,6 +43,19 @@ export class IntakePage {
 
   async isOnIntakePage(): Promise<boolean> {
     return this.page.url().includes('/intake')
+  }
+
+  async fillClientInfo(details: {
+    firstName: string
+    lastName: string
+    email: string
+    phone: string
+  }): Promise<void> {
+    return this.fillClientForm(details)
+  }
+
+  async submitForm(): Promise<void> {
+    return this.continueToCheckout()
   }
 
   async fillClientForm(details: {
@@ -118,7 +133,9 @@ export class IntakePage {
     const phone = await this.phoneInput.inputValue()
     const consent = await this.consentCheckbox.isChecked()
 
-    return firstName.length > 0 && lastName.length > 0 && email.length > 0 && phone.length > 0 && consent
+    return (
+      firstName.length > 0 && lastName.length > 0 && email.length > 0 && phone.length > 0 && consent
+    )
   }
 
   async clearForm(): Promise<void> {

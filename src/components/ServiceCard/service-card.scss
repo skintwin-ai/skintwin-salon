@@ -9,7 +9,9 @@
   background-color: var(--primary-color);
   border-radius: 12px;
   box-shadow: 0 4px 12px 0 var(--shadow);
-  transition: transform 0.2s ease, box-shadow 0.2s ease;
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
   overflow: hidden;
 
   &:hover {
@@ -164,6 +166,39 @@
       outline-offset: 2px;
     }
   }
+}
+
+.home-booking-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+  margin: 2rem 0 1rem;
+  padding: 1rem 1.25rem;
+  background: var(--primary-color);
+  border-radius: 12px;
+  box-shadow: 0 2px 8px var(--shadow);
+
+  p {
+    margin: 0;
+    font-weight: 600;
+  }
+
+  &__continue {
+    padding: 0.875rem 1.5rem;
+    background: var(--accent-color);
+    border: none;
+    border-radius: 8px;
+    color: var(--primary-color);
+    font-weight: 600;
+    cursor: pointer;
+  }
+}
+
+.category-filters__button.active {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  color: var(--primary-color);
 }
 
 // Responsive adjustments

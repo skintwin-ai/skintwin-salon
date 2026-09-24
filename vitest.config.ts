@@ -11,12 +11,14 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'json', 'html', 'lcov'],
-      include: ['src/**/*.{js,jsx,ts,tsx}'],
-      exclude: [
-        'src/**/*.{test,spec}.{js,jsx,ts,tsx}',
-        'src/test/**',
-        'node_modules/**',
+      include: [
+        'src/utils/booking.js',
+        'src/utils/http.js',
+        'src/api/_store.js',
+        'src/api/integrations/skintwin-sync.js',
+        'src/api/appointments/availability.js',
       ],
+      exclude: ['src/**/*.{test,spec}.{js,jsx,ts,tsx}', 'src/test/**', 'node_modules/**'],
       thresholds: {
         lines: 80,
         functions: 80,

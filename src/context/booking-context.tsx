@@ -13,6 +13,7 @@ export interface ServiceSelection {
  * Appointment details
  */
 export interface Appointment {
+  id?: string
   date: string
   startTime: string
   endTime: string
@@ -82,8 +83,22 @@ export interface BookingContextValue extends BookingState {
 
   // Utility
   resetBooking: () => void
-  getTotalPrice: (servicesList: any[]) => number
-  getTotalDuration: (servicesList: any[]) => number
+  getTotalPrice: (
+    servicesList: Array<{
+      id: string
+      price: number
+      durationMinutes?: number
+      bufferMinutes?: number
+    }>
+  ) => number
+  getTotalDuration: (
+    servicesList: Array<{
+      id: string
+      price: number
+      durationMinutes?: number
+      bufferMinutes?: number
+    }>
+  ) => number
 
   // Legacy compatibility (for existing cart.js)
   productIds: string[]
@@ -97,11 +112,97 @@ const initialCheckout: CheckoutState = {
   status: 'idle',
 }
 
+const STORAGE_KEY = 'skintwin-salon-booking'
+
 const initialState: BookingState = {
   services: [],
   appointment: null,
   client: null,
   checkout: initialCheckout,
+}
+
+const ENCRYPTED_PREFIX = 'enc:'
+const CRYPTO_SALT = 'booking-context-salt-v1'
+const CRYPTO_PASSPHRASE = `${STORAGE_KEY}-passphrase`
+
+const toBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b)
+  })
+  return window.btoa(binary)
+}
+
+const fromBase64 = (value: string): Uint8Array => {
+  const binary = window.atob(value)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+const getCryptoKey = async (): Promise<CryptoKey> => {
+  const enc = new TextEncoder()
+  const baseKey = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(CRYPTO_PASSPHRASE),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  )
+  return window.crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode(CRYPTO_SALT), iterations: 100000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
+const encryptValue = async (plainText: string): Promise<string> => {
+  const key = await getCryptoKey()
+  const iv = window.crypto.getRandomValues(new Uint8Array(12))
+  const enc = new TextEncoder()
+  const cipherBuffer = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    enc.encode(plainText)
+  )
+  return `${ENCRYPTED_PREFIX}${toBase64(iv)}.${toBase64(new Uint8Array(cipherBuffer))}`
+}
+
+const decryptValue = async (storedValue: string): Promise<string> => {
+  if (!storedValue.startsWith(ENCRYPTED_PREFIX)) return storedValue
+  const payload = storedValue.slice(ENCRYPTED_PREFIX.length)
+  const [ivB64, cipherB64] = payload.split('.')
+  if (!ivB64 || !cipherB64) throw new Error('Invalid encrypted payload format')
+
+  const key = await getCryptoKey()
+  const iv = fromBase64(ivB64)
+  const cipherBytes = fromBase64(cipherB64)
+  const plainBuffer = await window.crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    cipherBytes
+  )
+  return new TextDecoder().decode(plainBuffer)
+}
+
+const readStoredBooking = async (): Promise<BookingState> => {
+  if (typeof window === 'undefined') return initialState
+  try {
+    const raw = window.sessionStorage.getItem(STORAGE_KEY)
+    if (!raw) return initialState
+    const decrypted = await decryptValue(raw)
+    const parsed = JSON.parse(decrypted)
+    return {
+      services: parsed.services || [],
+      appointment: parsed.appointment || null,
+      client: parsed.client || null,
+      checkout: { ...initialCheckout, ...(parsed.checkout || {}) },
+    }
+  } catch {
+    return initialState
+  }
 }
 
 export const BookingContext = createContext<BookingContextValue | undefined>(undefined)
@@ -110,10 +211,34 @@ export const BookingContext = createContext<BookingContextValue | undefined>(und
 export const CartContext = BookingContext
 
 const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [services, setServices] = useState<ServiceSelection[]>([])
-  const [appointment, setAppointmentState] = useState<Appointment | null>(null)
-  const [client, setClientState] = useState<Client | null>(null)
-  const [checkout, setCheckout] = useState<CheckoutState>(initialCheckout)
+  const [services, setServices] = useState<ServiceSelection[]>(initialState.services)
+  const [appointment, setAppointmentState] = useState<Appointment | null>(initialState.appointment)
+  const [client, setClientState] = useState<Client | null>(initialState.client)
+  const [checkout, setCheckout] = useState<CheckoutState>(initialState.checkout)
+
+  React.useEffect(() => {
+    let isMounted = true
+    ;(async () => {
+      const stored = await readStoredBooking()
+      if (!isMounted) return
+      setServices(stored.services)
+      setAppointmentState(stored.appointment)
+      setClientState(stored.client)
+      setCheckout(stored.checkout)
+    })()
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    if (typeof window === 'undefined') return
+    ;(async () => {
+      const payload = JSON.stringify({ services, appointment, client, checkout })
+      const encrypted = await encryptValue(payload)
+      window.sessionStorage.setItem(STORAGE_KEY, encrypted)
+    })()
+  }, [services, appointment, client, checkout])
 
   // Legacy productIds for backward compatibility with existing cart page
   const productIds = useMemo(() => services.map((s) => s.serviceId), [services])
@@ -137,15 +262,16 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setServices((prev) => prev.filter((s) => s.serviceId !== serviceId))
   }, [])
 
-  const updateServiceQuantity = useCallback((serviceId: string, quantity: number) => {
-    if (quantity <= 0) {
-      removeService(serviceId)
-      return
-    }
-    setServices((prev) =>
-      prev.map((s) => (s.serviceId === serviceId ? { ...s, quantity } : s))
-    )
-  }, [removeService])
+  const updateServiceQuantity = useCallback(
+    (serviceId: string, quantity: number) => {
+      if (quantity <= 0) {
+        removeService(serviceId)
+        return
+      }
+      setServices((prev) => prev.map((s) => (s.serviceId === serviceId ? { ...s, quantity } : s)))
+    },
+    [removeService]
+  )
 
   const clearServices = useCallback(() => {
     setServices([])
@@ -200,11 +326,21 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
     setAppointmentState(null)
     setClientState(null)
     setCheckout(initialCheckout)
+    if (typeof window !== 'undefined') {
+      window.sessionStorage.removeItem(STORAGE_KEY)
+    }
   }, [])
 
   // Utility functions
   const getTotalPrice = useCallback(
-    (servicesList: any[]) => {
+    (
+      servicesList: Array<{
+        id: string
+        price: number
+        durationMinutes?: number
+        bufferMinutes?: number
+      }>
+    ) => {
       return services.reduce((total, selection) => {
         const service = servicesList.find((s) => s.id === selection.serviceId)
         if (!service) return total
@@ -226,18 +362,26 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
   )
 
   const getTotalDuration = useCallback(
-    (servicesList: any[]) => {
+    (
+      servicesList: Array<{
+        id: string
+        price: number
+        durationMinutes?: number
+        bufferMinutes?: number
+      }>
+    ) => {
       return services.reduce((total, selection) => {
         const service = servicesList.find((s) => s.id === selection.serviceId)
         if (!service) return total
 
-        let duration = (service.durationMinutes + (service.bufferMinutes || 0)) * selection.quantity
+        let duration =
+          ((service.durationMinutes || 0) + (service.bufferMinutes || 0)) * selection.quantity
 
         // Add add-on durations
         selection.addOns.forEach((addOnId) => {
           const addOn = servicesList.find((s) => s.id === addOnId)
           if (addOn) {
-            duration += addOn.durationMinutes
+            duration += addOn.durationMinutes || 0
           }
         })
 
@@ -248,9 +392,12 @@ const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ child
   )
 
   // Legacy compatibility for existing cart.js page
-  const updateCart = useCallback((id: number) => {
-    addService(id.toString())
-  }, [addService])
+  const updateCart = useCallback(
+    (id: number) => {
+      addService(id.toString())
+    },
+    [addService]
+  )
 
   const resetCart = useCallback(() => {
     clearServices()
@@ -309,7 +456,11 @@ export const useBooking = (): BookingContextValue => {
   return context
 }
 
-// Default export for Gatsby wrapRootElement
-export default ({ element }: { element: React.ReactNode }) => (
+const RootBookingProvider = ({ element }: { element: React.ReactNode }) => (
   <BookingContextProvider>{element}</BookingContextProvider>
 )
+
+RootBookingProvider.displayName = 'RootBookingProvider'
+
+// Default export for Gatsby wrapRootElement
+export default RootBookingProvider

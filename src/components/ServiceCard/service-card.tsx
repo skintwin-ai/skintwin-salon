@@ -94,16 +94,14 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, showDescription = f
             key={service.id}
             className="service"
             data-testid={`service-card-${service.id}`}
+            id={`service-${service.id}`}
+            data-service-id={service.id}
             data-category={service.category}
           >
-            {image && (
-              <GatsbyImage
-                image={image}
-                alt={service.name}
-                className="service__image"
-                placeholder="blurred"
-              />
-            )}
+            <span data-testid={`service-${service.id}`} className="visually-hidden">
+              {service.name}
+            </span>
+            {image && <GatsbyImage image={image} alt={service.name} className="service__image" />}
 
             <div className="service__content">
               <span className="service__category">{getCategoryLabel(service.category)}</span>
@@ -111,9 +109,7 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, showDescription = f
                 {service.name}
               </h2>
 
-              {showDescription && (
-                <p className="service__description">{service.description}</p>
-              )}
+              {showDescription && <p className="service__description">{service.description}</p>}
 
               <div className="service-meta">
                 <span className="service-meta__price" data-testid="service-price">
@@ -125,9 +121,7 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, showDescription = f
               </div>
 
               {service.requiresConsultation && (
-                <span className="service__consultation-badge">
-                  Consultation Required
-                </span>
+                <span className="service__consultation-badge">Consultation Required</span>
               )}
 
               <div className="service__actions">
@@ -144,7 +138,12 @@ const ServiceCard: React.FC<ServiceCardProps> = ({ category, showDescription = f
                     xmlns="http://www.w3.org/2000/svg"
                     aria-hidden="true"
                   >
-                    <path d="M8 1v14M1 8h14" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                    <path
+                      d="M8 1v14M1 8h14"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                    />
                   </svg>
                   <span>Add to Booking</span>
                 </button>

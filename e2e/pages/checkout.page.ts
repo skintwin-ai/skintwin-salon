@@ -45,7 +45,9 @@ export class CheckoutPage {
   }
 
   async getServices(): Promise<string[]> {
-    const services = await this.serviceList.locator('[data-testid="service-item"], .menu__description h4').all()
+    const services = await this.serviceList
+      .locator('[data-testid="service-item"], .menu__description h4')
+      .all()
     const names: string[] = []
     for (const service of services) {
       const name = await service.textContent()
@@ -76,6 +78,14 @@ export class CheckoutPage {
   async clickCheckout(): Promise<void> {
     await expect(this.checkoutButton).toBeEnabled()
     await this.checkoutButton.click()
+  }
+
+  async createInvoice(): Promise<void> {
+    return this.clickCheckout()
+  }
+
+  async pushToTerminal(): Promise<void> {
+    await expect(this.paymentPrompt.or(this.loadingSpinner).first()).toBeVisible({ timeout: 10000 })
   }
 
   async clickRetry(): Promise<void> {

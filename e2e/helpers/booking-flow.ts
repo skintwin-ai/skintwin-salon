@@ -3,6 +3,9 @@ import { HomePage } from '../pages/home.page'
 import { BookingPage } from '../pages/booking.page'
 import { IntakePage } from '../pages/intake.page'
 import { CheckoutPage } from '../pages/checkout.page'
+import { normalizeServiceId } from './ids'
+
+export { normalizeServiceId }
 
 /**
  * Reusable booking flow helpers for E2E tests
@@ -27,7 +30,7 @@ export async function selectServices(page: Page, serviceIds: string[]): Promise<
   const homePage = new HomePage(page)
 
   for (const serviceId of serviceIds) {
-    await homePage.addServiceToBooking(serviceId)
+    await homePage.addServiceToBooking(normalizeServiceId(serviceId))
   }
 
   await expect(homePage.getBookingCount()).resolves.toBe(serviceIds.length)
@@ -41,16 +44,13 @@ export async function completeScheduling(
 ): Promise<void> {
   const bookingPage = new BookingPage(page)
 
-  // Select date (use tomorrow if not specified)
   const selectedDate = date || getTomorrowDate()
   await bookingPage.selectDate(selectedDate)
 
-  // Select provider if specified
   if (providerId) {
     await bookingPage.selectProvider(providerId)
   }
 
-  // Select time slot (use first available if not specified)
   if (time) {
     await bookingPage.selectTimeSlot(time)
   } else {
@@ -83,31 +83,31 @@ export async function completeFullBookingFlow(
   booking: BookingDetails,
   client: ClientDetails
 ): Promise<void> {
-  // Step 1: Select services
-  await selectServices(page, booking.serviceIds)
-
-  // Navigate to booking
   const homePage = new HomePage(page)
+  await homePage.goto()
+  await selectServices(page, booking.serviceIds)
   await homePage.proceedToBooking()
-
-  // Step 2: Complete scheduling
   await completeScheduling(page, booking.providerId, booking.date, booking.time)
-
-  // Step 3: Complete intake
   await completeIntake(page, client)
 
-  // Now on checkout page
   const checkoutPage = new CheckoutPage(page)
   await expect(checkoutPage.isOnCheckoutPage()).resolves.toBe(true)
+}
+
+export const defaultTestClient: ClientDetails = {
+  firstName: 'Test',
+  lastName: 'Client',
+  email: 'test.client@example.com',
+  phone: '+2348012345678',
 }
 
 export function getTomorrowDate(): string {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
 
-  // Skip weekends
-  if (tomorrow.getDay() === 0) tomorrow.setDate(tomorrow.getDate() + 1) // Skip Sunday
-  if (tomorrow.getDay() === 6) tomorrow.setDate(tomorrow.getDate() + 2) // Skip Saturday
+  while (tomorrow.getDay() === 0 || tomorrow.getDay() === 6) {
+    tomorrow.setDate(tomorrow.getDate() + 1)
+  }
 
   return tomorrow.toISOString().split('T')[0]
 }

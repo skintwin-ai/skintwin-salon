@@ -18,7 +18,9 @@ export class ConfirmationPage {
 
   constructor(page: Page) {
     this.page = page
-    this.successMessage = page.locator('[data-testid="success-message"], .success-prompt h1')
+    this.successMessage = page.locator(
+      '[data-testid="success-message"], .confirmation__title, .success-prompt h1'
+    )
     this.bookingReference = page.locator('[data-testid="booking-reference"]')
     this.appointmentDetails = page.locator('[data-testid="appointment-details"]')
     this.servicesSummary = page.locator('[data-testid="services-summary"]')

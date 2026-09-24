@@ -4,6 +4,9 @@
  */
 
 import crypto from 'crypto'
+import { parseRequestBody } from '../../utils/http'
+import { saveAppointment } from '../_store'
+import { syncWithPlatform } from '../integrations/skintwin-sync'
 
 export default async function createAppointment(req, res) {
   if (req.method !== 'POST') {
@@ -11,10 +14,9 @@ export default async function createAppointment(req, res) {
   }
 
   try {
-    const data = JSON.parse(req.body)
-
-    // Validate required fields
+    const data = parseRequestBody(req)
     const requiredFields = ['services', 'date', 'startTime', 'providerId', 'client']
+
     for (const field of requiredFields) {
       if (!data[field]) {
         return res.status(400).json({
@@ -24,7 +26,6 @@ export default async function createAppointment(req, res) {
       }
     }
 
-    // Validate services array
     if (!Array.isArray(data.services) || data.services.length === 0) {
       return res.status(400).json({
         status: false,
@@ -32,7 +33,6 @@ export default async function createAppointment(req, res) {
       })
     }
 
-    // Validate client consent
     if (!data.client.consentAccepted) {
       return res.status(400).json({
         status: false,
@@ -40,11 +40,9 @@ export default async function createAppointment(req, res) {
       })
     }
 
-    // Generate appointment ID and reference using crypto for secure unique IDs
-    const appointmentId = `APT_${Date.now()}_${crypto.randomUUID().split('-')[0]}`
+    const appointmentId = data.id || `APT_${Date.now()}_${crypto.randomUUID().split('-')[0]}`
     const reference = `REF_${Date.now()}`
 
-    // Create appointment object
     const appointment = {
       id: appointmentId,
       reference,
@@ -62,20 +60,23 @@ export default async function createAppointment(req, res) {
         phone: data.client.phone,
         consentAccepted: data.client.consentAccepted,
       },
-      status: 'draft',
+      status: data.status || 'draft',
       totalAmount: data.totalAmount || 0,
       currency: data.currency || 'NGN',
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
     }
 
-    // In a real implementation, this would save to a database
-    // For now, we return the created appointment
+    saveAppointment(appointment)
+    const platform = await syncWithPlatform({ action: 'sync_appointment', payload: appointment })
 
     res.status(201).json({
       status: true,
       message: 'Appointment created successfully',
-      data: appointment,
+      data: {
+        ...appointment,
+        platform,
+      },
     })
   } catch (error) {
     console.error('Error creating appointment:', error)

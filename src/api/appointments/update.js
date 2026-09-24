@@ -3,15 +3,18 @@
  * PUT /api/appointments/update
  */
 
+import { parseRequestBody } from '../../utils/http'
+import { getAppointment, saveAppointment } from '../_store'
+import { syncWithPlatform } from '../integrations/skintwin-sync'
+
 export default async function updateAppointment(req, res) {
   if (req.method !== 'PUT' && req.method !== 'POST') {
     return res.status(405).json({ status: false, message: 'Method not allowed' })
   }
 
   try {
-    const data = JSON.parse(req.body)
+    const data = parseRequestBody(req)
 
-    // Validate appointment ID
     if (!data.id) {
       return res.status(400).json({
         status: false,
@@ -19,8 +22,15 @@ export default async function updateAppointment(req, res) {
       })
     }
 
-    // Validate status transitions
-    const validStatuses = ['draft', 'scheduled', 'payment_pending', 'paid', 'completed', 'cancelled', 'no_show']
+    const validStatuses = [
+      'draft',
+      'scheduled',
+      'payment_pending',
+      'paid',
+      'completed',
+      'cancelled',
+      'no_show',
+    ]
     if (data.status && !validStatuses.includes(data.status)) {
       return res.status(400).json({
         status: false,
@@ -28,22 +38,9 @@ export default async function updateAppointment(req, res) {
       })
     }
 
-    // Check for reschedule conflicts (in real implementation)
-    if (data.date || data.startTime || data.providerId) {
-      // Would check for conflicts here
-      const hasConflict = false // Simulated check
-
-      if (hasConflict) {
-        return res.status(409).json({
-          status: false,
-          message: 'Time slot is not available. Please choose another time.',
-        })
-      }
-    }
-
-    // Update appointment
+    const existing = getAppointment(data.id) || { id: data.id }
     const updatedAppointment = {
-      id: data.id,
+      ...existing,
       ...(data.services && { services: data.services }),
       ...(data.date && { date: data.date }),
       ...(data.startTime && { startTime: data.startTime }),
@@ -55,10 +52,19 @@ export default async function updateAppointment(req, res) {
       updatedAt: new Date().toISOString(),
     }
 
+    saveAppointment(updatedAppointment)
+    const platform = await syncWithPlatform({
+      action: 'sync_appointment',
+      payload: updatedAppointment,
+    })
+
     res.status(200).json({
       status: true,
       message: 'Appointment updated successfully',
-      data: updatedAppointment,
+      data: {
+        ...updatedAppointment,
+        platform,
+      },
     })
   } catch (error) {
     console.error('Error updating appointment:', error)
