@@ -121,12 +121,79 @@ const initialState: BookingState = {
   checkout: initialCheckout,
 }
 
-const readStoredBooking = (): BookingState => {
+const ENCRYPTED_PREFIX = 'enc:'
+const CRYPTO_SALT = 'booking-context-salt-v1'
+const CRYPTO_PASSPHRASE = `${STORAGE_KEY}-passphrase`
+
+const toBase64 = (bytes: Uint8Array): string => {
+  let binary = ''
+  bytes.forEach((b) => {
+    binary += String.fromCharCode(b)
+  })
+  return window.btoa(binary)
+}
+
+const fromBase64 = (value: string): Uint8Array => {
+  const binary = window.atob(value)
+  const out = new Uint8Array(binary.length)
+  for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i)
+  return out
+}
+
+const getCryptoKey = async (): Promise<CryptoKey> => {
+  const enc = new TextEncoder()
+  const baseKey = await window.crypto.subtle.importKey(
+    'raw',
+    enc.encode(CRYPTO_PASSPHRASE),
+    'PBKDF2',
+    false,
+    ['deriveKey']
+  )
+  return window.crypto.subtle.deriveKey(
+    { name: 'PBKDF2', salt: enc.encode(CRYPTO_SALT), iterations: 100000, hash: 'SHA-256' },
+    baseKey,
+    { name: 'AES-GCM', length: 256 },
+    false,
+    ['encrypt', 'decrypt']
+  )
+}
+
+const encryptValue = async (plainText: string): Promise<string> => {
+  const key = await getCryptoKey()
+  const iv = window.crypto.getRandomValues(new Uint8Array(12))
+  const enc = new TextEncoder()
+  const cipherBuffer = await window.crypto.subtle.encrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    enc.encode(plainText)
+  )
+  return `${ENCRYPTED_PREFIX}${toBase64(iv)}.${toBase64(new Uint8Array(cipherBuffer))}`
+}
+
+const decryptValue = async (storedValue: string): Promise<string> => {
+  if (!storedValue.startsWith(ENCRYPTED_PREFIX)) return storedValue
+  const payload = storedValue.slice(ENCRYPTED_PREFIX.length)
+  const [ivB64, cipherB64] = payload.split('.')
+  if (!ivB64 || !cipherB64) throw new Error('Invalid encrypted payload format')
+
+  const key = await getCryptoKey()
+  const iv = fromBase64(ivB64)
+  const cipherBytes = fromBase64(cipherB64)
+  const plainBuffer = await window.crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv },
+    key,
+    cipherBytes
+  )
+  return new TextDecoder().decode(plainBuffer)
+}
+
+const readStoredBooking = async (): Promise<BookingState> => {
   if (typeof window === 'undefined') return initialState
   try {
     const raw = window.sessionStorage.getItem(STORAGE_KEY)
     if (!raw) return initialState
-    const parsed = JSON.parse(raw)
+    const decrypted = await decryptValue(raw)
+    const parsed = JSON.parse(decrypted)
     return {
       services: parsed.services || [],
       appointment: parsed.appointment || null,
@@ -144,18 +211,33 @@ export const BookingContext = createContext<BookingContextValue | undefined>(und
 export const CartContext = BookingContext
 
 const BookingContextProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const stored = readStoredBooking()
-  const [services, setServices] = useState<ServiceSelection[]>(stored.services)
-  const [appointment, setAppointmentState] = useState<Appointment | null>(stored.appointment)
-  const [client, setClientState] = useState<Client | null>(stored.client)
-  const [checkout, setCheckout] = useState<CheckoutState>(stored.checkout)
+  const [services, setServices] = useState<ServiceSelection[]>(initialState.services)
+  const [appointment, setAppointmentState] = useState<Appointment | null>(initialState.appointment)
+  const [client, setClientState] = useState<Client | null>(initialState.client)
+  const [checkout, setCheckout] = useState<CheckoutState>(initialState.checkout)
+
+  React.useEffect(() => {
+    let isMounted = true
+    ;(async () => {
+      const stored = await readStoredBooking()
+      if (!isMounted) return
+      setServices(stored.services)
+      setAppointmentState(stored.appointment)
+      setClientState(stored.client)
+      setCheckout(stored.checkout)
+    })()
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   React.useEffect(() => {
     if (typeof window === 'undefined') return
-    window.sessionStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ services, appointment, client, checkout })
-    )
+    ;(async () => {
+      const payload = JSON.stringify({ services, appointment, client, checkout })
+      const encrypted = await encryptValue(payload)
+      window.sessionStorage.setItem(STORAGE_KEY, encrypted)
+    })()
   }, [services, appointment, client, checkout])
 
   // Legacy productIds for backward compatibility with existing cart page
