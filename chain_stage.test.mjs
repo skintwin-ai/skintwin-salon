@@ -540,6 +540,14 @@ test("the local rail records a named delivery when an appointment is created or 
     });
     assert.equal(again.status, 200);
     assert.equal(readFileSync(ledger, "utf8"), afterUpdate);
+
+    const changedUpdate = await handleSalonApi("POST", "/api/appointments/update", {
+      id: "apt-rail",
+      services: [{ delivery: { ...delivery, destination: "durban" } }, { delivery: added }],
+    });
+    assert.equal(changedUpdate.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), afterUpdate);
+    assert.equal(getAppointment("apt-rail").services[0].delivery.destination, "cape-town");
   } finally {
     if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
