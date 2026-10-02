@@ -3,6 +3,7 @@
  * POST /api/integrations/skintwin
  */
 
+import { recordSyncedCancellation, recordSyncedDelivery } from '../../../chain_stage.mjs'
 import { syncWithPlatform, transformPayload } from './skintwin-sync'
 import { parseRequestBody } from '../../utils/http'
 
@@ -49,6 +50,16 @@ export default async function skintwinIntegration(req, res) {
 
     if (data.action === 'get_recommendations' && !payload?.clientId) {
       return res.status(400).json({ status: false, message: 'Client ID is required' })
+    }
+
+    if (data.action === 'sync_appointment' || data.action === 'log_treatment') {
+      const appointmentId = data.action === 'log_treatment' ? payload?.appointmentId : payload?.id
+      const delivered = payload?.status === 'cancelled'
+        ? recordSyncedCancellation(appointmentId, payload?.services)
+        : recordSyncedDelivery(appointmentId, payload?.services)
+      if (!delivered.ok) {
+        return res.status(400).json({ status: false, message: delivered.error })
+      }
     }
 
     const result = await syncWithPlatform({ action: data.action, payload })

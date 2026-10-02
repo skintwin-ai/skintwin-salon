@@ -27,6 +27,10 @@ export function localPaystackInvoice(payload = {}) {
       status: 'pending',
       customer: payload.customer || null,
       description: payload.description || 'Salon booking',
+      currency: payload.currency || 'NGN',
+      fulfillment_id: payload.fulfillment_id || null,
+      settlement_id: payload.settlement_id || null,
+      amount_cents: payload.amount_cents,
       line_items: payload.line_items || [],
     },
   }
