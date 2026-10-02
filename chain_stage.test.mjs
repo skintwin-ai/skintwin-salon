@@ -1869,3 +1869,110 @@ test("a cancelled appointment sync returns the delivery it already recorded once
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
 });
+
+test("creating a cancelled appointment returns the delivery it already recorded once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-create-cancel-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const client = { consentAccepted: true };
+  const facial = { id: "srv-001", name: "Signature Facial" };
+  const delivery = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "cape-town",
+    milligrams: 2000,
+  };
+  const booking = {
+    date: "2026-10-02",
+    startTime: "10:00",
+    providerId: "prv-001",
+    client,
+    status: "cancelled",
+  };
+  try {
+    const early = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-early",
+      services: [facial, { delivery }],
+    });
+    assert.equal(early.status, 400);
+    assert.equal(existsSync(ledger), false);
+    assert.equal(getAppointment("apt-early"), null);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+          { command: "transfer", args: { transfer_id: "xfer-cape-town", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 1000 } },
+          { command: "transfer", args: { transfer_id: "apt-omit:1", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+          { command: "transfer", args: { transfer_id: "apt-named:1", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const omitted = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-omit",
+      services: [facial],
+    });
+    assert.equal(omitted.status, 201);
+    assert.equal(omitted.body.data.status, "cancelled");
+    const returned = readFileSync(ledger, "utf8");
+    assert.equal(returned.includes('"transfer_id": "return:apt-omit:1"'), true);
+    assert.equal(returned.includes('"transfer_id": "return:xfer-cape-town"'), false);
+
+    const again = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-omit",
+      services: [facial],
+    });
+    assert.equal(again.status, 201);
+    assert.equal(readFileSync(ledger, "utf8"), returned);
+
+    const absent = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-19",
+      services: [facial],
+    });
+    assert.equal(absent.status, 201);
+    assert.equal(readFileSync(ledger, "utf8"), returned);
+
+    const named = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-named",
+      services: [facial, { delivery }],
+    });
+    assert.equal(named.status, 201);
+    const namedText = readFileSync(ledger, "utf8");
+    assert.equal(namedText.includes('"transfer_id": "return:apt-named:1"'), true);
+    assert.equal(namedText.includes('"transfer_id": "return:xfer-cape-town"'), false);
+
+    const changed = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-named",
+      services: [facial, { delivery: { ...delivery, milligrams: 1000 } }],
+    });
+    assert.equal(changed.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), namedText);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});

@@ -93,7 +93,9 @@ export async function handleSalonApi(method, pathname, body = {}) {
       return { status: 400, body: { status: false, message: 'Client consent is required' } }
     }
     const appointmentId = body.id || `APT_${Date.now()}`
-    const delivered = recordSyncedDelivery(appointmentId, body.services)
+    const delivered = body.status === 'cancelled'
+      ? recordSyncedCancellation(appointmentId, body.services)
+      : recordSyncedDelivery(appointmentId, body.services)
     if (!delivered.ok) {
       return { status: 400, body: { status: false, message: delivered.error } }
     }
