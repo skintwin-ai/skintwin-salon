@@ -1,14 +1,24 @@
-import fetch from 'node-fetch'
-import { isLocalPaystackRail, localPaystackInvoice } from './integrations/paystack-rail'
-import { jsonBody, parseRequestBody } from '../utils/http'
+import { recordSyncedDelivery } from '../../chain_stage.mjs'
+import { isLocalPaystackRail, localPaystackInvoice } from './integrations/paystack-rail.js'
+import { jsonBody, parseRequestBody } from '../utils/http.js'
 
 export default async function createInvoice(req, res) {
   const payload = parseRequestBody(req)
+  if (Array.isArray(payload.deliveries) && payload.deliveries.length > 0) {
+    const delivered = recordSyncedDelivery(
+      payload.appointment_id || payload.appointmentId || 'invoice',
+      payload.deliveries.map((delivery) => ({ delivery })),
+    )
+    if (!delivered.ok) {
+      return res.status(400).send({ status: false, message: delivered.error })
+    }
+  }
 
   if (isLocalPaystackRail()) {
     return res.status(200).send(localPaystackInvoice(payload))
   }
 
+  const fetch = (await import('node-fetch')).default
   const url = `${process.env.GATSBY_BASE_API}/paymentrequest`
   const headers = {
     'Content-Type': 'application/json',
