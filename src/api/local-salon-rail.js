@@ -113,7 +113,7 @@ export async function handleSalonApi(method, pathname, body = {}) {
     }
     const existing = getAppointment(body.id) || { id: body.id }
     if (body.status === 'cancelled') {
-      const returned = recordAppointmentCancellation(body.id)
+      const returned = recordSyncedCancellation(body.id, body.services)
       if (!returned.ok) {
         return { status: 400, body: { status: false, message: returned.error } }
       }
