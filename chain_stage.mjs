@@ -108,8 +108,8 @@ export function deliveriesForAppointment(appointmentId, services) {
     if (!delivery) return;
     const args = {
       transfer_id: `${id}:${index}`,
-      sku_id: delivery.sku_id,
-      batch_id: delivery.batch_id,
+      sku_id: namedField(delivery, "skuId", "sku_id", "sku"),
+      batch_id: namedField(delivery, "batchId", "batch_id"),
       source: delivery.source,
       destination: delivery.destination,
       milligrams: delivery.milligrams,
@@ -144,8 +144,12 @@ export function recordDeliveries(appointmentId, services) {
   return committed.ok ? { ok: true, count: commands.length } : committed;
 }
 
-function named(value) {
-  return typeof value === "string" ? value.trim() : "";
+function namedField(record, ...keys) {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return "";
 }
 
 function minorUnits(value, label) {
@@ -171,12 +175,12 @@ export function invoiceSettlementCommands(invoice) {
   const lines = Array.isArray(invoice.line_items) ? invoice.line_items : [];
   const groups = new Map();
   lines.forEach((line, index) => {
-    const fulfillmentId = named(line?.fulfillment_id);
+    const fulfillmentId = namedField(line, "fulfillmentId", "fulfillment_id");
     if (!fulfillmentId) return;
     groups.set(fulfillmentId, (groups.get(fulfillmentId) || 0) + lineMinorUnits(line, index));
   });
   if (groups.size === 0) {
-    const fulfillmentId = named(invoice.fulfillment_id);
+    const fulfillmentId = namedField(invoice, "fulfillmentId", "fulfillment_id");
     if (!fulfillmentId) return [];
     const stated = invoice.amount_cents ?? invoice.amount;
     const cents =
@@ -189,7 +193,7 @@ export function invoiceSettlementCommands(invoice) {
   const currency = text(invoice.currency || "NGN", "currency").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("currency must be a 3-letter code");
   const invoiceId = text(invoice.id || invoice.offline_reference, "invoice id");
-  const explicit = named(invoice.settlement_id);
+  const explicit = namedField(invoice, "settlementId", "settlement_id");
   return [...groups.entries()].map(([fulfillmentId, amountCents], index) => ({
     command: "settle",
     args: {

@@ -4,7 +4,7 @@ import test from "node:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { deliveriesAddedByUpdate, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
+import { deliveriesAddedByUpdate, deliveriesForAppointment, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
 import { handleSalonApi } from "./src/api/local-salon-rail.js";
 import { getAppointment } from "./src/api/_store.js";
 import { invoiceLineItem, terminalInvoicePayload } from "./src/utils/invoice-payload.mjs";
@@ -34,6 +34,139 @@ test("a service appointment does not move stock", () => {
 test("a delivery without a batch is not an appointment", () => {
   const result = recordDeliveries("apt-1", [{ delivery: { sku_id: "sku-serum-c" } }]);
   assert.equal(result.ok, false);
+});
+
+test("a delivery and invoice named by camel ids name that sale", () => {
+  const commands = deliveriesForAppointment("apt-1", [
+    { name: "Signature Facial" },
+    {
+      delivery: {
+        skuId: "sku-cleanser",
+        sku_id: "sku-other",
+        batchId: "batch-cleanser",
+        batch_id: "batch-other",
+        source: "plant",
+        destination: "cape-town",
+        milligrams: 2000,
+      },
+    },
+    {
+      delivery: {
+        skuId: "  ",
+        sku_id: " sku-serum ",
+        batchId: "  ",
+        batch_id: " batch-serum ",
+        source: "plant",
+        destination: "johannesburg",
+        milligrams: 1000,
+      },
+    },
+  ]);
+  assert.equal(commands.length, 2);
+  assert.equal(commands[0].args.sku_id, "sku-cleanser");
+  assert.equal(commands[0].args.batch_id, "batch-cleanser");
+  assert.equal(commands[1].args.sku_id, "sku-serum");
+  assert.equal(commands[1].args.batch_id, "batch-serum");
+  const settled = invoiceSettlementCommands({
+    id: "INV_LOCAL_1",
+    currency: "NGN",
+    settlementId: "pay-camel",
+    settlement_id: "pay-snake",
+    line_items: [
+      { name: "Signature Facial", amount: 850000, quantity: 1 },
+      { fulfillmentId: "order-1", fulfillment_id: "order-other", amount: 250000, quantity: 1 },
+      { fulfillmentId: "  ", fulfillment_id: " order-2 ", amount: 100000, quantity: 1 },
+    ],
+  });
+  assert.equal(settled.length, 2);
+  assert.equal(settled[0].args.fulfillment_id, "order-1");
+  assert.equal(settled[0].args.settlement_id, "pay-INV_LOCAL_1:0:order-1");
+  assert.equal(settled[1].args.fulfillment_id, "order-2");
+  const single = invoiceSettlementCommands({
+    id: "INV_LOCAL_1",
+    currency: "NGN",
+    fulfillmentId: "  ",
+    fulfillment_id: " order-1 ",
+    settlementId: " pay-camel ",
+    amount_cents: 250000,
+    line_items: [{ name: "Signature Facial", amount: 850000, quantity: 1 }],
+  });
+  assert.equal(single.length, 1);
+  assert.equal(single[0].args.fulfillment_id, "order-1");
+  assert.equal(single[0].args.settlement_id, "pay-camel");
+});
+
+test("a delivery named by skuId moves that batch once", () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-camel-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+    cwd: hub,
+    input: JSON.stringify({
+      commands: [
+        { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+        { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+        { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+        { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+        { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+        { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        { command: "transfer", args: { transfer_id: "xfer-cape-town", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+        { command: "fulfill", args: { fulfillment_id: "order-1", sku_id: "sku-cleanser", location: "cape-town", milligrams: 2000, kind: "retail" } },
+      ],
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+  const delivery = {
+    skuId: "  ",
+    sku_id: "sku-cleanser",
+    batchId: "  ",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "johannesburg",
+    milligrams: 2000,
+  };
+  try {
+    const moved = recordDeliveries("apt-camel", [{ name: "Signature Facial" }, { delivery }]);
+    assert.equal(moved.ok, true, moved.error);
+    assert.equal(moved.count, 1);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes("apt-camel:1"), true);
+    assert.equal(recorded.includes('"sku_id": "sku-cleanser"'), true);
+    const overdraw = recordDeliveries("apt-camel", [{ name: "Signature Facial" }, { delivery: { ...delivery, milligrams: 8000 } }]);
+    assert.equal(overdraw.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+    const paid = recordInvoiceSettlement({
+      id: "INV_CAMEL",
+      currency: "NGN",
+      fulfillmentId: "  ",
+      fulfillment_id: "order-1",
+      amount_cents: 250000,
+    });
+    assert.equal(paid.ok, true, paid.error);
+    assert.equal(paid.count, 1);
+    const settled = readFileSync(ledger, "utf8");
+    assert.equal(settled.includes("pay-INV_CAMEL:0:order-1"), true);
+    const again = recordInvoiceSettlement({
+      id: "INV_CAMEL_2",
+      currency: "NGN",
+      fulfillmentId: "order-1",
+      amount_cents: 250000,
+    });
+    assert.equal(again.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), settled);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
 });
 
 test("a delivery against an empty ledger is rejected", () => {
