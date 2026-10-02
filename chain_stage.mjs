@@ -2,28 +2,50 @@
 // Salon distribution commands for the local salon API and the hub ledger.
 
 import { createRequire } from "node:module";
-import { existsSync, readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { basename, dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
 let chainLocate;
 
+function recordedHub(directory, fileName) {
+  const domain = join(directory, "domain");
+  const script = join(domain, fileName);
+  const registryPath = join(domain, "org-ecosystem.json");
+  if (!existsSync(registryPath) || !existsSync(join(domain, "supply-chain.json")) || !existsSync(script)) {
+    return null;
+  }
+  try {
+    const data = JSON.parse(readFileSync(registryPath, "utf8"));
+    if (data?.hub?.name !== basename(directory)) return null;
+  } catch {
+    return null;
+  }
+  return script;
+}
+
 export function loadChainLocate() {
   if (chainLocate !== undefined) return chainLocate;
   const require = createRequire(import.meta.url);
-  const candidates = [];
+  let script = null;
   if (process.env.SKINTWIN_HUB_ROOT) {
-    candidates.push(join(process.env.SKINTWIN_HUB_ROOT, "domain", "locate.cjs"));
+    script = recordedHub(process.env.SKINTWIN_HUB_ROOT, "locate.cjs");
   }
   let dir = dirname(fileURLToPath(import.meta.url));
-  while (dir !== dirname(dir)) {
+  while (script === null && dir !== dirname(dir)) {
     if (existsSync(join(dir, ".git"))) {
-      candidates.push(join(dirname(dir), "skintwin-ecosystem-design", "domain", "locate.cjs"));
+      try {
+        for (const name of readdirSync(dirname(dir))) {
+          script = recordedHub(join(dirname(dir), name), "locate.cjs");
+          if (script) break;
+        }
+      } catch {
+        script = null;
+      }
       break;
     }
     dir = dirname(dir);
   }
-  const script = candidates.find((path) => existsSync(path));
   chainLocate = script ? require(script) : null;
   return chainLocate;
 }
