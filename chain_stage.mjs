@@ -198,6 +198,59 @@ export function recordSyncedDelivery(appointmentId, services) {
   return committed.ok ? { ok: true, count: fresh.length } : committed;
 }
 
+function deliveryTransfers(appointmentId) {
+  const raw = process.env.SKINTWIN_CHAIN_LEDGER;
+  if (!raw || !existsSync(raw)) return [];
+  const prefix = `${appointmentId}:`;
+  const found = new Map();
+  for (const line of readFileSync(raw, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const record = JSON.parse(line);
+    const transferId = record.command === "transfer" ? record.args?.transfer_id : "";
+    if (typeof transferId !== "string" || !transferId.startsWith(prefix)) continue;
+    if (!/^\d+$/.test(transferId.slice(prefix.length))) continue;
+    found.set(transferId, record.args);
+  }
+  return [...found.values()];
+}
+
+export function appointmentCancellationCommands(appointmentId) {
+  const id = text(String(appointmentId), "appointment id");
+  const commands = [];
+  for (const prior of deliveryTransfers(id)) {
+    const reverse = {
+      transfer_id: `return:${prior.transfer_id}`,
+      sku_id: prior.sku_id,
+      batch_id: prior.batch_id,
+      source: prior.destination,
+      destination: prior.source,
+      milligrams: prior.milligrams,
+    };
+    const existing = priorTransfer(reverse.transfer_id);
+    if (!existing) {
+      commands.push({ command: "transfer", args: reverse });
+      continue;
+    }
+    if (!sameTransfer(existing, reverse)) throw new Error("id already exists");
+  }
+  return commands;
+}
+
+export function recordAppointmentCancellation(appointmentId) {
+  let commands;
+  try {
+    commands = appointmentCancellationCommands(appointmentId);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
 function namedField(record, ...keys) {
   for (const key of keys) {
     const value = record?.[key];

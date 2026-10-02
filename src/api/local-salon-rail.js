@@ -1,5 +1,5 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { recordInvoiceSettlement, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { recordAppointmentCancellation, recordInvoiceSettlement, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
 import { invoiceAppointmentId, invoiceServicesForLedger } from '../utils/invoice-payload.mjs'
 import { getAppointment, saveAppointment } from './_store.js'
 
@@ -110,7 +110,12 @@ export async function handleSalonApi(method, pathname, body = {}) {
       return { status: 400, body: { status: false, message: 'Appointment ID is required' } }
     }
     const existing = getAppointment(body.id) || { id: body.id }
-    if (body.services) {
+    if (body.status === 'cancelled') {
+      const returned = recordAppointmentCancellation(body.id)
+      if (!returned.ok) {
+        return { status: 400, body: { status: false, message: returned.error } }
+      }
+    } else if (body.services) {
       const delivered = recordSyncedDelivery(body.id, body.services)
       if (!delivered.ok) {
         return { status: 400, body: { status: false, message: delivered.error } }
@@ -121,6 +126,31 @@ export async function handleSalonApi(method, pathname, body = {}) {
     return {
       status: 200,
       body: { status: true, message: 'Appointment updated successfully', data: appointment },
+    }
+  }
+
+  if (pathname === '/api/appointments/cancel' && method === 'POST') {
+    if (!body.id) {
+      return { status: 400, body: { status: false, message: 'Appointment ID is required' } }
+    }
+    const appointmentStatus = body.currentStatus || 'scheduled'
+    if (['completed', 'cancelled', 'no_show'].includes(appointmentStatus)) {
+      return {
+        status: 400,
+        body: { status: false, message: `Cannot cancel appointment with status: ${appointmentStatus}` },
+      }
+    }
+    const returned = recordAppointmentCancellation(body.id)
+    if (!returned.ok) {
+      return { status: 400, body: { status: false, message: returned.error } }
+    }
+    return {
+      status: 200,
+      body: {
+        status: true,
+        message: 'Appointment cancelled successfully',
+        data: { id: body.id, status: 'cancelled' },
+      },
     }
   }
 
