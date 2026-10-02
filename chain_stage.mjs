@@ -1,9 +1,8 @@
 #!/usr/bin/env node
 // Salon distribution commands for the local salon API and the hub ledger.
 
-import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
-import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -12,37 +11,21 @@ let chainLocate;
 export function loadChainLocate() {
   if (chainLocate !== undefined) return chainLocate;
   const require = createRequire(import.meta.url);
-  const override = process.env.SKINTWIN_HUB_ROOT;
-  if (override) {
-    const script = join(override, "domain", "locate.cjs");
-    if (existsSync(script) && existsSync(join(override, "domain", "org-ecosystem.json"))) {
-      chainLocate = require(script);
-      return chainLocate;
-    }
+  const candidates = [];
+  if (process.env.SKINTWIN_HUB_ROOT) {
+    candidates.push(join(process.env.SKINTWIN_HUB_ROOT, "domain", "locate.cjs"));
   }
   let dir = dirname(fileURLToPath(import.meta.url));
   while (dir !== dirname(dir)) {
     if (existsSync(join(dir, ".git"))) {
-      let names = [];
-      try {
-        names = readdirSync(dirname(dir));
-      } catch {
-        chainLocate = null;
-        return null;
-      }
-      for (const name of names) {
-        const script = join(dirname(dir), name, "domain", "locate.cjs");
-        if (existsSync(script) && existsSync(join(dirname(dir), name, "domain", "org-ecosystem.json"))) {
-          chainLocate = require(script);
-          return chainLocate;
-        }
-      }
+      candidates.push(join(dirname(dir), "skintwin-ecosystem-design", "domain", "locate.cjs"));
       break;
     }
     dir = dirname(dir);
   }
-  chainLocate = null;
-  return null;
+  const script = candidates.find((path) => existsSync(path));
+  chainLocate = script ? require(script) : null;
+  return chainLocate;
 }
 
 function text(value, label) {
@@ -132,23 +115,9 @@ function commitStage(request, result) {
   const ledger = process.env.SKINTWIN_CHAIN_LEDGER;
   if (!ledger) return result;
   const locate = loadChainLocate();
-  const hub = locate && locate.hubRoot();
-  if (!hub) return { ok: false, error: "supply-chain hub is not present" };
-  const child = spawnSync("python3", ["-m", "domain.ledger"], {
-    cwd: hub,
-    input: JSON.stringify(request),
-    encoding: "utf8",
-  });
-  if (child.status !== 0) {
-    let message = child.stderr;
-    try {
-      message = JSON.parse(child.stdout || "{}").error || message;
-    } catch {
-      message = message || "ledger rejected the command";
-    }
-    return { ok: false, error: message || "ledger rejected the command" };
-  }
-  return result;
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommand(request);
+  return committed.ok ? result : committed;
 }
 
 export function salonSupplyChainResponse(method, pathname, body) {
