@@ -204,21 +204,41 @@ export function recordSyncedDelivery(appointmentId, services) {
   return commitFreshTransfers(commands);
 }
 
+function reverseTransfer(prior) {
+  return {
+    transfer_id: `return:${prior.transfer_id}`,
+    sku_id: prior.sku_id,
+    batch_id: prior.batch_id,
+    source: prior.destination,
+    destination: prior.source,
+    milligrams: prior.milligrams,
+  };
+}
+
 export function recordSyncedCancellation(appointmentId, services) {
   if (!namesDelivery(services)) return recordAppointmentCancellation(appointmentId);
   let commands;
   try {
-    commands = deliveriesForAppointment(appointmentId, services).map((command) => ({
-      command: "transfer",
-      args: {
+    const named = deliveriesForAppointment(appointmentId, services);
+    const namedIds = new Set();
+    commands = named.map((command) => {
+      namedIds.add(command.args.transfer_id);
+      const prior = priorTransfer(command.args.transfer_id);
+      const reverse = {
         transfer_id: `return:${command.args.transfer_id}`,
         sku_id: command.args.sku_id,
         batch_id: command.args.batch_id,
         source: command.args.destination,
         destination: command.args.source,
         milligrams: command.args.milligrams,
-      },
-    }));
+      };
+      if (prior && !sameTransfer(reverseTransfer(prior), reverse)) throw new Error("id already exists");
+      return { command: "transfer", args: reverse };
+    });
+    for (const prior of deliveryTransfers(appointmentId)) {
+      if (namedIds.has(prior.transfer_id)) continue;
+      commands.push({ command: "transfer", args: reverseTransfer(prior) });
+    }
   } catch (error) {
     return { ok: false, error: error.message };
   }

@@ -2079,6 +2079,44 @@ test("updating an appointment to cancelled returns the delivery it names", async
     assert.equal(readFileSync(ledger, "utf8"), namedText);
     assert.equal(getAppointment("apt-named").services[1].delivery.milligrams, 2000);
     assert.equal(getAppointment("apt-named").status, "cancelled");
+
+    const split = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "transfer", args: { transfer_id: "apt-split:0", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+          { command: "transfer", args: { transfer_id: "apt-split:1", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(split.status, 0, split.stderr || split.stdout);
+    const splitRecorded = readFileSync(ledger, "utf8");
+    const mismatched = await handleSalonApi("PUT", "/api/appointments/update", {
+      id: "apt-split",
+      status: "cancelled",
+      services: [facial, { delivery: { ...delivery, milligrams: 1000 } }],
+    });
+    assert.equal(mismatched.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), splitRecorded);
+    assert.equal(getAppointment("apt-split"), null);
+    const both = await handleSalonApi("PUT", "/api/appointments/update", {
+      id: "apt-split",
+      status: "cancelled",
+      services: [facial, { delivery }],
+    });
+    assert.equal(both.status, 200);
+    const splitReturned = readFileSync(ledger, "utf8");
+    assert.equal(splitReturned.includes('"transfer_id": "return:apt-split:0"'), true);
+    assert.equal(splitReturned.includes('"transfer_id": "return:apt-split:1"'), true);
+    assert.equal(splitReturned.includes('"transfer_id": "return:xfer-cape-town"'), false);
+    const splitAgain = await handleSalonApi("PUT", "/api/appointments/update", {
+      id: "apt-split",
+      status: "cancelled",
+      services: [facial, { delivery }],
+    });
+    assert.equal(splitAgain.status, 200);
+    assert.equal(readFileSync(ledger, "utf8"), splitReturned);
   } finally {
     if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
