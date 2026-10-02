@@ -1089,3 +1089,102 @@ test("a transfer command named by a numeric string moves that batch once", () =>
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
 });
+
+test("a platform sync records the delivery an appointment already names once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-sync-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const delivery = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "cape-town",
+    milligrams: 2000,
+  };
+  const appointment = {
+    id: "apt-sync",
+    date: "2026-10-02",
+    startTime: "10:00",
+    client: { email: "adaeze.obi@example.com" },
+    services: [{ id: "srv-001", name: "Signature Facial" }, { delivery }],
+  };
+  try {
+    const facial = await handleSalonApi("POST", "/api/integrations/skintwin", {
+      action: "sync_appointment",
+      appointment: {
+        id: "apt-facial",
+        services: [{ id: "srv-001", name: "Signature Facial" }],
+      },
+    });
+    assert.equal(facial.status, 200);
+    assert.equal(facial.body.data.persisted, true);
+    assert.equal(existsSync(ledger), false);
+
+    const rejected = await handleSalonApi("POST", "/api/integrations/skintwin", {
+      action: "sync_appointment",
+      appointment: {
+        id: "apt-sync",
+        services: [{ delivery: { ...delivery, milligrams: "lots" } }],
+      },
+    });
+    assert.equal(rejected.status, 400);
+    assert.equal(existsSync(ledger), false);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const synced = await handleSalonApi("POST", "/api/integrations/skintwin", {
+      action: "sync_appointment",
+      appointment,
+    });
+    assert.equal(synced.status, 200);
+    assert.equal(synced.body.data.persisted, true);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes('"transfer_id": "apt-sync:1"'), true);
+    assert.equal(recorded.includes('"milligrams": 2000'), true);
+
+    const again = await handleSalonApi("POST", "/api/integrations/skintwin", {
+      action: "sync_appointment",
+      appointment,
+    });
+    assert.equal(again.status, 200);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const changed = await handleSalonApi("POST", "/api/integrations/skintwin", {
+      action: "sync_appointment",
+      appointment: {
+        ...appointment,
+        services: [
+          { id: "srv-001", name: "Signature Facial" },
+          { delivery: { ...delivery, destination: "johannesburg" } },
+        ],
+      },
+    });
+    assert.equal(changed.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});

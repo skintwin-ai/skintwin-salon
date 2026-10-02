@@ -1,5 +1,5 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { deliveriesAddedByUpdate, recordDeliveries, recordInvoiceSettlement, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { deliveriesAddedByUpdate, recordDeliveries, recordInvoiceSettlement, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
 import { getAppointment, saveAppointment } from './_store.js'
 
 async function persistSalonSync(action, payload) {
@@ -140,6 +140,15 @@ export async function handleSalonApi(method, pathname, body = {}) {
       }
     if (!action) {
       return { status: 400, body: { status: false, message: 'action is required' } }
+    }
+    if (action === 'sync_appointment' || action === 'log_treatment') {
+      const delivered = recordSyncedDelivery(
+        action === 'log_treatment' ? payload?.appointmentId : payload?.id,
+        payload?.services,
+      )
+      if (!delivered.ok) {
+        return { status: 400, body: { status: false, message: delivered.error } }
+      }
     }
     const result = await persistSalonSync(action, payload)
     return {

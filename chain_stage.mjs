@@ -154,6 +154,50 @@ export function recordDeliveries(appointmentId, services) {
   return committed.ok ? { ok: true, count: commands.length } : committed;
 }
 
+function priorTransfer(transferId) {
+  const raw = process.env.SKINTWIN_CHAIN_LEDGER;
+  if (!raw || !existsSync(raw)) return null;
+  let found = null;
+  for (const line of readFileSync(raw, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const record = JSON.parse(line);
+    if (record.command === "transfer" && record.args?.transfer_id === transferId) found = record.args;
+  }
+  return found;
+}
+
+function sameTransfer(prior, args) {
+  return ["sku_id", "batch_id", "source", "destination", "milligrams"].every((key) => prior[key] === args[key]);
+}
+
+export function recordSyncedDelivery(appointmentId, services) {
+  if (!Array.isArray(services) || !services.some((service) => service && typeof service === "object" && service.delivery)) {
+    return { ok: true, count: 0 };
+  }
+  let commands;
+  try {
+    commands = deliveriesForAppointment(appointmentId, services);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  const fresh = [];
+  for (const command of commands) {
+    const prior = priorTransfer(command.args.transfer_id);
+    if (!prior) {
+      fresh.push(command);
+      continue;
+    }
+    if (!sameTransfer(prior, command.args)) return { ok: false, error: "id already exists" };
+  }
+  if (fresh.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(fresh);
+  return committed.ok ? { ok: true, count: fresh.length } : committed;
+}
+
 function namedField(record, ...keys) {
   for (const key of keys) {
     const value = record?.[key];
