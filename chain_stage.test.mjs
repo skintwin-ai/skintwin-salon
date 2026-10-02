@@ -987,3 +987,105 @@ test("a paid invoice named by a numeric amount settles that sale once", () => {
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
 });
+
+test("a transfer command named by a numeric string moves that batch once", () => {
+  const preview = salonSupplyChainResponse("POST", "/api/supply-chain", {
+    command: "transfer",
+    args: {
+      transfer_id: "xfer-text",
+      sku_id: "sku-cleanser",
+      batch_id: "batch-cleanser",
+      source: "plant",
+      destination: "cape-town",
+      milligrams: " 2000 ",
+    },
+  });
+  assert.equal(preview.status, 200);
+  assert.equal(preview.body.artifact.milligrams, 2000);
+  const rejected = salonSupplyChainResponse("POST", "/api/supply-chain", {
+    command: "transfer",
+    args: {
+      transfer_id: "xfer-word",
+      sku_id: "sku-cleanser",
+      batch_id: "batch-cleanser",
+      source: "plant",
+      destination: "cape-town",
+      milligrams: "lots",
+    },
+  });
+  assert.equal(rejected.status, 400);
+  assert.match(rejected.body.error, /milligrams must be a positive integer/);
+  const dir = mkdtempSync(join(tmpdir(), "salon-transfer-count-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const move = {
+    command: "transfer",
+    args: {
+      transfer_id: "xfer-text",
+      sku_id: "sku-cleanser",
+      batch_id: "batch-cleanser",
+      source: "plant",
+      destination: "cape-town",
+      milligrams: " 2000 ",
+    },
+  };
+  try {
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+    const seededText = readFileSync(ledger, "utf8");
+    const missing = salonSupplyChainResponse("POST", "/api/supply-chain", {
+      command: "transfer",
+      args: {
+        transfer_id: "xfer-missing",
+        sku_id: "sku-cleanser",
+        batch_id: "batch-cleanser",
+        source: "plant",
+        destination: "cape-town",
+      },
+    });
+    assert.equal(missing.status, 400);
+    const word = salonSupplyChainResponse("POST", "/api/supply-chain", {
+      command: "transfer",
+      args: { ...move.args, transfer_id: "xfer-word", milligrams: "lots" },
+    });
+    assert.equal(word.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), seededText);
+    const moved = salonSupplyChainResponse("POST", "/api/supply-chain", move);
+    assert.equal(moved.status, 200, moved.body.error);
+    assert.equal(moved.body.artifact.milligrams, 2000);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes('"transfer_id": "xfer-text"'), true);
+    assert.equal(recorded.includes('"milligrams": 2000'), true);
+    assert.equal(recorded.includes('"milligrams": "'), false);
+    const overdraw = salonSupplyChainResponse("POST", "/api/supply-chain", {
+      command: "transfer",
+      args: { ...move.args, transfer_id: "xfer-over", milligrams: "8000" },
+    });
+    assert.equal(overdraw.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});
