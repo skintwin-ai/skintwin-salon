@@ -162,6 +162,7 @@ function namedField(record, ...keys) {
 }
 
 function minorUnits(value, label) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) value = Number(value.trim());
   if (typeof value === "number" && Number.isInteger(value) && value >= 1) return value;
   if (typeof value === "number" && Number.isFinite(value)) {
     const cents = Math.round(value * 100);

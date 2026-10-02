@@ -890,3 +890,100 @@ test("a paid invoice named by a numeric quantity settles that sale once", () => 
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
 });
+
+test("a paid invoice named by a numeric amount settles that sale once", () => {
+  const line = invoiceSettlementCommands({
+    id: "INV_AMT",
+    currency: "NGN",
+    line_items: [{ name: "Gentle cleanser", amount: " 250000 ", quantity: 1, fulfillment_id: "order-1" }],
+  });
+  assert.equal(line[0].args.amount_cents, 250000);
+  const stated = invoiceSettlementCommands({
+    id: "INV_AMT",
+    currency: "NGN",
+    fulfillment_id: "order-1",
+    amount: " 18500 ",
+    line_items: [{ name: "Signature Facial", amount: 1, quantity: 1 }],
+  });
+  assert.equal(stated[0].args.amount_cents, 18500);
+  assert.throws(
+    () =>
+      invoiceSettlementCommands({
+        id: "INV_AMT",
+        currency: "NGN",
+        line_items: [{ name: "Gentle cleanser", amount: "lots", quantity: 1, fulfillment_id: "order-1" }],
+      }),
+    /amount must be a positive integer/,
+  );
+  assert.throws(
+    () =>
+      invoiceSettlementCommands({
+        id: "INV_AMT",
+        currency: "NGN",
+        line_items: [{ name: "Gentle cleanser", amount: "185.00", quantity: 1, fulfillment_id: "order-1" }],
+      }),
+    /amount must be a positive integer/,
+  );
+  const dir = mkdtempSync(join(tmpdir(), "salon-amount-text-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const invoice = {
+    id: "INV_AMT",
+    currency: "NGN",
+    line_items: [{ name: "Gentle cleanser", amount: "250000", quantity: 1, fulfillment_id: "order-1" }],
+  };
+  try {
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 5000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 5000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 5000]] } },
+          { command: "transfer", args: { transfer_id: "xfer-cape-town", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+          { command: "fulfill", args: { fulfillment_id: "order-1", sku_id: "sku-cleanser", location: "cape-town", milligrams: 2000, kind: "retail" } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+    const seededText = readFileSync(ledger, "utf8");
+    const unnamed = recordInvoiceSettlement({
+      id: "INV_SERVICE",
+      currency: "NGN",
+      line_items: [{ name: "Signature Facial", amount: "250000", quantity: 1 }],
+    });
+    assert.equal(unnamed.ok, true);
+    assert.equal(unnamed.count, 0);
+    assert.equal(readFileSync(ledger, "utf8"), seededText);
+    const word = recordInvoiceSettlement({
+      ...invoice,
+      line_items: [{ name: "Gentle cleanser", amount: "lots", quantity: 1, fulfillment_id: "order-1" }],
+    });
+    assert.equal(word.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), seededText);
+    const paid = recordInvoiceSettlement(invoice);
+    assert.equal(paid.ok, true, paid.error);
+    assert.equal(paid.count, 1);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes("pay-INV_AMT:0:order-1"), true);
+    assert.equal(recorded.includes('"amount_cents": 250000'), true);
+    const again = recordInvoiceSettlement(invoice);
+    assert.equal(again.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});
