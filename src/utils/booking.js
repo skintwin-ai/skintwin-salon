@@ -2,7 +2,7 @@
  * Shared salon booking helpers used by pages, checkout, and confirmation.
  */
 
-import { fulfillmentIdOf, invoiceLineItem, terminalInvoicePayload } from './invoice-payload.mjs'
+import { checkoutDeliveryFields, fulfillmentIdOf, invoiceLineItem, terminalInvoicePayload } from './invoice-payload.mjs'
 
 export { terminalInvoicePayload }
 
@@ -100,6 +100,7 @@ export function buildInvoicePayload({ client, services, appointment } = {}) {
     description: `Salon booking for ${clientName}${when}`,
     line_items: lineItems,
     ...(fulfillmentId ? { fulfillment_id: fulfillmentId } : {}),
+    ...checkoutDeliveryFields(services, appointment),
   }
 }
 

@@ -10,6 +10,7 @@ import createInvoice from "./src/api/create_invoice.js";
 import pushToTerminal from "./src/api/push_to_terminal.js";
 import { getAppointment } from "./src/api/_store.js";
 import { invoiceLineItem, terminalInvoicePayload } from "./src/utils/invoice-payload.mjs";
+import { buildInvoicePayload } from "./src/utils/booking.js";
 
 test("salon api accepts a stock transfer", () => {
   const result = salonSupplyChainResponse("POST", "/api/supply-chain", {
@@ -1495,6 +1496,128 @@ test("the local invoice rail records the delivery it already names once", async 
     });
     assert.equal(repeated.status, 200);
     assert.equal(readFileSync(ledger, "utf8"), moved);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+    if (previousKey === undefined) delete process.env.GATSBY_AUTH_KEY;
+    else process.env.GATSBY_AUTH_KEY = previousKey;
+  }
+});
+
+test("a checkout invoice records the delivery a service already names once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-checkout-delivery-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  const previousKey = process.env.GATSBY_AUTH_KEY;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  process.env.GATSBY_AUTH_KEY = "placeholder";
+  const delivery = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "cape-town",
+    milligrams: 2000,
+  };
+  const services = [
+    { name: "Signature Facial", price: 8500, quantity: 1 },
+    { name: "Gentle cleanser", price: 2500, quantity: 1, delivery },
+  ];
+  try {
+    const unnamed = buildInvoicePayload({
+      client: { email: "adaeze.obi@example.com" },
+      services: [{ name: "Signature Facial", price: 8500, quantity: 1 }],
+      appointment: { id: "apt-checkout", date: "2026-09-23", startTime: "10:00" },
+    });
+    assert.equal(unnamed.services, undefined);
+    assert.equal(unnamed.appointment_id, "apt-checkout");
+    const skipped = terminalResponse();
+    await createInvoice({ body: unnamed }, skipped);
+    assert.equal(skipped.statusCode, 200);
+    assert.equal(existsSync(ledger), false);
+
+    const blank = buildInvoicePayload({
+      client: { email: "adaeze.obi@example.com" },
+      services,
+      appointment: { id: "  ", date: "2026-09-23", startTime: "10:00" },
+    });
+    assert.equal(blank.appointment_id, undefined);
+    const rejected = terminalResponse();
+    await createInvoice(
+      { body: buildInvoicePayload({
+        client: { email: "adaeze.obi@example.com" },
+        services: [{ name: "Signature Facial", price: 8500 }, { name: "Gentle cleanser", price: 2500, delivery: { ...delivery, milligrams: "lots" } }],
+        appointment: { id: "apt-checkout" },
+      }) },
+      rejected,
+    );
+    assert.equal(rejected.statusCode, 400);
+    assert.equal(existsSync(ledger), false);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const invoice = buildInvoicePayload({
+      client: { firstName: "Adaeze", lastName: "Obi", email: "adaeze.obi@example.com" },
+      services,
+      appointment: { id: "apt-checkout", date: "2026-09-23", startTime: "10:00" },
+    });
+    const created = terminalResponse();
+    await createInvoice({ body: invoice }, created);
+    assert.equal(created.statusCode, 200);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes('"transfer_id": "apt-checkout:1"'), true);
+    assert.equal(recorded.includes('"transfer_id": "apt-checkout:0"'), false);
+    assert.equal(recorded.includes('"milligrams": 2000'), true);
+
+    const again = terminalResponse();
+    await createInvoice({ body: invoice }, again);
+    assert.equal(again.statusCode, 200);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const railed = await handleSalonApi("POST", "/api/create_invoice", invoice);
+    assert.equal(railed.status, 200);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const changed = terminalResponse();
+    await createInvoice(
+      { body: buildInvoicePayload({
+        client: { email: "adaeze.obi@example.com" },
+        services: [
+          { name: "Signature Facial", price: 8500 },
+          { name: "Gentle cleanser", price: 2500, delivery: { ...delivery, destination: "johannesburg" } },
+        ],
+        appointment: { id: "apt-checkout" },
+      }) },
+      changed,
+    );
+    assert.equal(changed.statusCode, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+    assert.equal(readFileSync(ledger, "utf8").includes("johannesburg"), false);
+
+    const fallen = await handleSalonApi("POST", "/api/create_invoice", blank);
+    assert.equal(fallen.status, 200);
+    const moved = readFileSync(ledger, "utf8");
+    assert.equal(moved.includes('"transfer_id": "invoice:1"'), true);
   } finally {
     if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;

@@ -1,5 +1,6 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
 import { recordInvoiceSettlement, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { invoiceAppointmentId, invoiceServicesForLedger } from '../utils/invoice-payload.mjs'
 import { getAppointment, saveAppointment } from './_store.js'
 
 async function persistSalonSync(action, payload) {
@@ -55,11 +56,9 @@ export async function handleSalonApi(method, pathname, body = {}) {
   if (supplyChain) return supplyChain
 
   if (pathname === '/api/create_invoice' && method === 'POST') {
-    if (Array.isArray(body.deliveries) && body.deliveries.length > 0) {
-      const delivered = recordSyncedDelivery(
-        body.appointment_id || body.appointmentId || 'invoice',
-        body.deliveries.map((delivery) => ({ delivery })),
-      )
+    const services = invoiceServicesForLedger(body)
+    if (services.length > 0) {
+      const delivered = recordSyncedDelivery(invoiceAppointmentId(body), services)
       if (!delivered.ok) {
         return { status: 400, body: { status: false, message: delivered.error } }
       }

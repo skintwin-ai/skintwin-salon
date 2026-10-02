@@ -116,6 +116,24 @@ describe('buildInvoicePayload', () => {
     expect(payload.line_items[0].fulfillment_id).toBe('order-1')
     expect(payload.fulfillment_id).toBe('order-appointment')
   })
+
+  it('keeps a delivery a service already names on that service index', () => {
+    const delivery = {
+      sku_id: 'sku-cleanser',
+      batch_id: 'batch-cleanser',
+      source: 'plant',
+      destination: 'cape-town',
+      milligrams: 2000,
+    }
+    const payload = buildInvoicePayload({
+      client: { email: 'adaeze.obi@example.com' },
+      services: [{ name: 'Signature Facial', price: 8500 }, { name: 'Gentle cleanser', price: 2500, delivery }],
+      appointment: { id: 'apt-checkout', date: '2026-09-23', startTime: '10:00' },
+    })
+    expect(payload.appointment_id).toBe('apt-checkout')
+    expect(payload.services[1].delivery).toEqual(delivery)
+    expect(payload.services[0].delivery).toBeUndefined()
+  })
 })
 
 describe('booking math helpers', () => {

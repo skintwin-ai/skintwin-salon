@@ -18,6 +18,38 @@ export function invoiceLineItem(service = {}) {
   return line;
 }
 
+export function checkoutDeliveryFields(services, appointment) {
+  const namedServices = Array.isArray(services) ? services : [];
+  const hasDelivery = namedServices.some(
+    (service) => service && typeof service === "object" && service.delivery,
+  );
+  const appointmentId =
+    namedId(appointment?.id) ||
+    namedId(appointment?.appointment_id) ||
+    namedId(appointment?.appointmentId);
+  const fields = {};
+  if (appointmentId) fields.appointment_id = appointmentId;
+  if (hasDelivery) fields.services = namedServices;
+  return fields;
+}
+
+export function invoiceServicesForLedger(payload = {}) {
+  if (
+    Array.isArray(payload.services) &&
+    payload.services.some((service) => service && typeof service === "object" && service.delivery)
+  ) {
+    return payload.services;
+  }
+  if (Array.isArray(payload.deliveries) && payload.deliveries.length > 0) {
+    return payload.deliveries.map((delivery) => ({ delivery }));
+  }
+  return [];
+}
+
+export function invoiceAppointmentId(payload = {}) {
+  return namedId(payload.appointment_id) || namedId(payload.appointmentId) || "invoice";
+}
+
 export function terminalInvoicePayload(invoice = {}) {
   const payload = {};
   if (invoice.id != null) payload.id = invoice.id;

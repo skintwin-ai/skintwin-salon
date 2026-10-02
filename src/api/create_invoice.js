@@ -1,14 +1,13 @@
 import { recordSyncedDelivery } from '../../chain_stage.mjs'
 import { isLocalPaystackRail, localPaystackInvoice } from './integrations/paystack-rail.js'
 import { jsonBody, parseRequestBody } from '../utils/http.js'
+import { invoiceAppointmentId, invoiceServicesForLedger } from '../utils/invoice-payload.mjs'
 
 export default async function createInvoice(req, res) {
   const payload = parseRequestBody(req)
-  if (Array.isArray(payload.deliveries) && payload.deliveries.length > 0) {
-    const delivered = recordSyncedDelivery(
-      payload.appointment_id || payload.appointmentId || 'invoice',
-      payload.deliveries.map((delivery) => ({ delivery })),
-    )
+  const services = invoiceServicesForLedger(payload)
+  if (services.length > 0) {
+    const delivered = recordSyncedDelivery(invoiceAppointmentId(payload), services)
     if (!delivered.ok) {
       return res.status(400).send({ status: false, message: delivered.error })
     }
