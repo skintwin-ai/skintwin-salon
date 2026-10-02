@@ -56,8 +56,8 @@ export async function handleSalonApi(method, pathname, body = {}) {
 
   if (pathname === '/api/create_invoice' && method === 'POST') {
     if (Array.isArray(body.deliveries) && body.deliveries.length > 0) {
-      const delivered = recordDeliveries(
-        body.appointment_id || 'invoice',
+      const delivered = recordSyncedDelivery(
+        body.appointment_id || body.appointmentId || 'invoice',
         body.deliveries.map((delivery) => ({ delivery })),
       )
       if (!delivered.ok) {

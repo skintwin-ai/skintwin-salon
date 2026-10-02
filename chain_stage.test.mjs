@@ -1378,3 +1378,104 @@ test("creating an invoice records the delivery it already names once", async () 
     else process.env.GATSBY_AUTH_KEY = previousKey;
   }
 });
+
+test("the local invoice rail records the delivery it already names once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-rail-invoice-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  const previousKey = process.env.GATSBY_AUTH_KEY;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  process.env.GATSBY_AUTH_KEY = "placeholder";
+  const delivery = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "cape-town",
+    milligrams: 2000,
+  };
+  const invoice = {
+    appointment_id: "apt-inv",
+    customer: "adaeze.obi@example.com",
+    currency: "NGN",
+    deliveries: [delivery],
+    line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1 }],
+  };
+  try {
+    const service = await handleSalonApi("POST", "/api/create_invoice", {
+      customer: "adaeze.obi@example.com",
+      line_items: [{ name: "Signature Facial", amount: 250000, quantity: 1 }],
+    });
+    assert.equal(service.status, 200);
+    assert.equal(service.body.data.status, "pending");
+    assert.equal(existsSync(ledger), false);
+
+    const rejected = await handleSalonApi("POST", "/api/create_invoice", {
+      appointment_id: "apt-inv",
+      deliveries: [{ ...delivery, milligrams: "lots" }],
+    });
+    assert.equal(rejected.status, 400);
+    assert.equal(existsSync(ledger), false);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const created = await handleSalonApi("POST", "/api/create_invoice", invoice);
+    assert.equal(created.status, 200);
+    assert.equal(created.body.data.status, "pending");
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes('"transfer_id": "apt-inv:0"'), true);
+    assert.equal(recorded.includes('"milligrams": 2000'), true);
+    assert.equal(recorded.includes('"command": "settle"'), false);
+
+    const again = await handleSalonApi("POST", "/api/create_invoice", invoice);
+    assert.equal(again.status, 200);
+    assert.equal(again.body.data.status, "pending");
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const changed = await handleSalonApi("POST", "/api/create_invoice", {
+      ...invoice,
+      deliveries: [{ ...delivery, destination: "johannesburg" }],
+    });
+    assert.equal(changed.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const camel = await handleSalonApi("POST", "/api/create_invoice", {
+      appointmentId: "apt-camel",
+      deliveries: [delivery],
+    });
+    assert.equal(camel.status, 200);
+    const moved = readFileSync(ledger, "utf8");
+    assert.equal(moved.includes('"transfer_id": "apt-camel:0"'), true);
+    const repeated = await handleSalonApi("POST", "/api/create_invoice", {
+      appointmentId: "apt-camel",
+      deliveries: [delivery],
+    });
+    assert.equal(repeated.status, 200);
+    assert.equal(readFileSync(ledger, "utf8"), moved);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+    if (previousKey === undefined) delete process.env.GATSBY_AUTH_KEY;
+    else process.env.GATSBY_AUTH_KEY = previousKey;
+  }
+});
