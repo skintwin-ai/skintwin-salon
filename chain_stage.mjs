@@ -69,6 +69,11 @@ function positive(value, label) {
   return value;
 }
 
+function wholeCount(value) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
+  return value;
+}
+
 export function transfer(args) {
   const source = text(args.source, "source");
   const destination = text(args.destination, "destination");
@@ -116,7 +121,7 @@ export function deliveriesForAppointment(appointmentId, services) {
       batch_id: namedField(delivery, "batchId", "batch_id"),
       source: delivery.source,
       destination: delivery.destination,
-      milligrams: delivery.milligrams,
+      milligrams: positive(wholeCount(delivery.milligrams), "milligrams"),
     };
     transfer(args);
     commands.push({ command: "transfer", args });
