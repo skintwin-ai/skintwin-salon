@@ -508,6 +508,23 @@ test("the local rail records a named delivery when an appointment is created or 
     assert.equal(recorded.split("apt-rail:0").length - 1, 1);
     assert.equal(recorded.includes("apt-rail:1"), false);
 
+    const repeated = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-rail",
+      services: [{ delivery }],
+    });
+    assert.equal(repeated.status, 201);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const changed = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-rail",
+      services: [{ delivery: { ...delivery, destination: "johannesburg" } }],
+    });
+    assert.equal(changed.status, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+    assert.equal(getAppointment("apt-rail").services[0].delivery.destination, "cape-town");
+
     const updated = await handleSalonApi("POST", "/api/appointments/update", {
       id: "apt-rail",
       services: [{ delivery }, { delivery: added }],

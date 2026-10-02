@@ -4,7 +4,7 @@
  */
 
 import crypto from 'crypto'
-import { recordDeliveries } from '../../../chain_stage.mjs'
+import { recordSyncedDelivery } from '../../../chain_stage.mjs'
 import { parseRequestBody } from '../../utils/http'
 import { saveAppointment } from '../_store'
 import { syncWithPlatform } from '../integrations/skintwin-sync'
@@ -42,7 +42,7 @@ export default async function createAppointment(req, res) {
     }
 
     const appointmentId = data.id || `APT_${Date.now()}_${crypto.randomUUID().split('-')[0]}`
-    const delivered = recordDeliveries(appointmentId, data.services)
+    const delivered = recordSyncedDelivery(appointmentId, data.services)
     if (!delivered.ok) {
       return res.status(400).json({
         status: false,
