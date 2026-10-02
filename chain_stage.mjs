@@ -172,7 +172,8 @@ function minorUnits(value, label) {
 
 function lineMinorUnits(line, index) {
   const unit = minorUnits(line?.amount_cents ?? line?.amount, `line ${index} amount`);
-  const quantity = line?.quantity == null ? 1 : line.quantity;
+  const raw = line?.quantity;
+  const quantity = raw == null || (typeof raw === "string" && raw.trim() === "") ? 1 : wholeCount(raw);
   if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1) {
     throw new Error("quantity must be a positive integer");
   }
