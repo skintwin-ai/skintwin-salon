@@ -6,6 +6,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deliveriesAddedByUpdate, deliveriesForAppointment, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
 import { handleSalonApi } from "./src/api/local-salon-rail.js";
+import pushToTerminal from "./src/api/push_to_terminal.js";
 import { getAppointment } from "./src/api/_store.js";
 import { invoiceLineItem, terminalInvoicePayload } from "./src/utils/invoice-payload.mjs";
 
@@ -1186,5 +1187,101 @@ test("a platform sync records the delivery an appointment already names once", a
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
     if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});
+
+function terminalResponse() {
+  return {
+    statusCode: 0,
+    payload: null,
+    status(code) {
+      this.statusCode = code;
+      return this;
+    },
+    send(payload) {
+      this.payload = payload;
+      return this;
+    },
+  };
+}
+
+test("pushing an invoice to the terminal records the sale it names once", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-terminal-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  const previousKey = process.env.GATSBY_AUTH_KEY;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  process.env.GATSBY_AUTH_KEY = "placeholder";
+  const invoice = {
+    id: "INV_PUSH",
+    currency: "NGN",
+    fulfillment_id: "order-1",
+    amount_cents: 250000,
+  };
+  try {
+    const service = terminalResponse();
+    await pushToTerminal(
+      { body: { id: "INV_SERVICE", line_items: [{ name: "Signature Facial", amount: 250000, quantity: 1 }] } },
+      service,
+    );
+    assert.equal(service.statusCode, 200);
+    assert.equal(service.payload.data.status, "success");
+    assert.equal(existsSync(ledger), false);
+
+    const rejected = terminalResponse();
+    await pushToTerminal(
+      { body: { id: "INV_BAD", fulfillment_id: "order-1", amount_cents: "lots" } },
+      rejected,
+    );
+    assert.equal(rejected.statusCode, 400);
+    assert.equal(existsSync(ledger), false);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 5000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 5000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 5000]] } },
+          { command: "transfer", args: { transfer_id: "xfer-cape-town", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+          { command: "fulfill", args: { fulfillment_id: "order-1", sku_id: "sku-cleanser", location: "cape-town", milligrams: 2000, kind: "retail" } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const paid = terminalResponse();
+    await pushToTerminal({ body: invoice }, paid);
+    assert.equal(paid.statusCode, 200);
+    assert.equal(paid.payload.data.status, "success");
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes('"settlement_id": "pay-INV_PUSH:0:order-1"'), true);
+    assert.equal(recorded.includes('"amount_cents": 250000'), true);
+
+    const again = terminalResponse();
+    await pushToTerminal({ body: invoice }, again);
+    assert.equal(again.statusCode, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+
+    const changed = terminalResponse();
+    await pushToTerminal({ body: { ...invoice, amount_cents: 100 } }, changed);
+    assert.equal(changed.statusCode, 400);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+    if (previousKey === undefined) delete process.env.GATSBY_AUTH_KEY;
+    else process.env.GATSBY_AUTH_KEY = previousKey;
   }
 });
