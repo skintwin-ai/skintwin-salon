@@ -33,6 +33,53 @@ export function transfer(args) {
   };
 }
 
+export function deliveriesForAppointment(appointmentId, services) {
+  const id = text(appointmentId, "appointment id");
+  if (!Array.isArray(services)) throw new Error("services are required");
+  const commands = [];
+  services.forEach((service, index) => {
+    const delivery = service?.delivery;
+    if (!delivery) return;
+    const args = {
+      transfer_id: `${id}:${index}`,
+      sku_id: delivery.sku_id,
+      batch_id: delivery.batch_id,
+      source: delivery.source,
+      destination: delivery.destination,
+      milligrams: delivery.milligrams,
+    };
+    transfer(args);
+    commands.push({ command: "transfer", args });
+  });
+  return commands;
+}
+
+function useSharedLedger() {
+  const hub = process.env.SKINTWIN_HUB_ROOT
+    || ["/agent/repos/skintwin-ecosystem-design", "/workspace/repos/skintwin-ecosystem-design"]
+      .find((candidate) => existsSync(`${candidate}/domain/ledger.py`));
+  if (!hub) return false;
+  process.env.SKINTWIN_HUB_ROOT ||= hub;
+  process.env.SKINTWIN_CHAIN_LEDGER ||= `${hub}/var/supply-chain.jsonl`;
+  return true;
+}
+
+export function recordDeliveries(appointmentId, services) {
+  let commands;
+  try {
+    commands = deliveriesForAppointment(appointmentId, services);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  for (const command of commands) {
+    const accepted = handleStage(command);
+    if (!accepted.ok) return accepted;
+  }
+  return { ok: true, count: commands.length };
+}
+
 export function handleStage(request) {
   if (request?.command !== "transfer") {
     return { ok: false, error: `unknown command ${request?.command}` };

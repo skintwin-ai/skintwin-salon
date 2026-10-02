@@ -1,5 +1,5 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { recordDeliveries, salonSupplyChainResponse } from '../../chain_stage.mjs'
 
 async function persistSalonSync(action, payload) {
   const apiUrl = (process.env.SKINTWIN_API_URL || '').replace(/\/$/, '')
@@ -34,6 +34,15 @@ export async function handleSalonApi(method, pathname, body = {}) {
   if (supplyChain) return supplyChain
 
   if (pathname === '/api/create_invoice' && method === 'POST') {
+    if (Array.isArray(body.deliveries) && body.deliveries.length > 0) {
+      const delivered = recordDeliveries(
+        body.appointment_id || 'invoice',
+        body.deliveries.map((delivery) => ({ delivery })),
+      )
+      if (!delivered.ok) {
+        return { status: 400, body: { status: false, message: delivered.error } }
+      }
+    }
     if (!isLocalPaystackRail()) {
       return { status: 409, body: { status: false, message: 'Live Paystack keys are set' } }
     }
