@@ -1,14 +1,8 @@
 import http from 'node:http'
-import { existsSync } from 'node:fs'
 import { handleSalonApi } from './local-salon-rail.js'
+import { useSharedLedger } from '../../chain_stage.mjs'
 
-const hub = process.env.SKINTWIN_HUB_ROOT
-  || ['/agent/repos/skintwin-ecosystem-design', '/workspace/repos/skintwin-ecosystem-design']
-    .find((candidate) => existsSync(`${candidate}/domain/ledger.py`))
-if (hub) {
-  process.env.SKINTWIN_HUB_ROOT ||= hub
-  process.env.SKINTWIN_CHAIN_LEDGER ||= `${hub}/var/supply-chain.jsonl`
-}
+useSharedLedger()
 
 const port = Number(process.env.SALON_RAIL_PORT || 8000)
 

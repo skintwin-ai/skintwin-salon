@@ -2,8 +2,48 @@
 // Salon distribution commands for the local salon API and the hub ledger.
 
 import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { pathToFileURL } from "node:url";
+import { createRequire } from "node:module";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
+import { dirname, join } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+let chainLocate;
+
+export function loadChainLocate() {
+  if (chainLocate !== undefined) return chainLocate;
+  const require = createRequire(import.meta.url);
+  const override = process.env.SKINTWIN_HUB_ROOT;
+  if (override) {
+    const script = join(override, "domain", "locate.cjs");
+    if (existsSync(script) && existsSync(join(override, "domain", "org-ecosystem.json"))) {
+      chainLocate = require(script);
+      return chainLocate;
+    }
+  }
+  let dir = dirname(fileURLToPath(import.meta.url));
+  while (dir !== dirname(dir)) {
+    if (existsSync(join(dir, ".git"))) {
+      let names = [];
+      try {
+        names = readdirSync(dirname(dir));
+      } catch {
+        chainLocate = null;
+        return null;
+      }
+      for (const name of names) {
+        const script = join(dirname(dir), name, "domain", "locate.cjs");
+        if (existsSync(script) && existsSync(join(dirname(dir), name, "domain", "org-ecosystem.json"))) {
+          chainLocate = require(script);
+          return chainLocate;
+        }
+      }
+      break;
+    }
+    dir = dirname(dir);
+  }
+  chainLocate = null;
+  return null;
+}
 
 function text(value, label) {
   if (typeof value !== "string" || value.trim() === "") {
@@ -54,14 +94,10 @@ export function deliveriesForAppointment(appointmentId, services) {
   return commands;
 }
 
-function useSharedLedger() {
-  const hub = process.env.SKINTWIN_HUB_ROOT
-    || ["/agent/repos/skintwin-ecosystem-design", "/workspace/repos/skintwin-ecosystem-design"]
-      .find((candidate) => existsSync(`${candidate}/domain/ledger.py`));
-  if (!hub) return false;
-  process.env.SKINTWIN_HUB_ROOT ||= hub;
-  process.env.SKINTWIN_CHAIN_LEDGER ||= `${hub}/var/supply-chain.jsonl`;
-  return true;
+export function useSharedLedger() {
+  const locate = loadChainLocate();
+  if (!locate) return false;
+  return Boolean(locate.bindLedger());
 }
 
 export function recordDeliveries(appointmentId, services) {
@@ -95,9 +131,8 @@ function commitStage(request, result) {
   if (!result.ok || process.env.SKINTWIN_CHAIN_SKIP_DISPATCH === "1") return result;
   const ledger = process.env.SKINTWIN_CHAIN_LEDGER;
   if (!ledger) return result;
-  const hub = process.env.SKINTWIN_HUB_ROOT
-    || ["/agent/repos/skintwin-ecosystem-design", "/workspace/repos/skintwin-ecosystem-design"]
-      .find((candidate) => existsSync(`${candidate}/domain/ledger.py`));
+  const locate = loadChainLocate();
+  const hub = locate && locate.hubRoot();
   if (!hub) return { ok: false, error: "supply-chain hub is not present" };
   const child = spawnSync("python3", ["-m", "domain.ledger"], {
     cwd: hub,
