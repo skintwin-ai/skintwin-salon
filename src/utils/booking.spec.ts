@@ -104,6 +104,17 @@ describe('buildInvoicePayload', () => {
       amount: 850000,
       quantity: 1,
     })
+    expect(payload.fulfillment_id).toBeUndefined()
+  })
+
+  it('keeps a fulfillment a service already names', () => {
+    const payload = buildInvoicePayload({
+      client: { email: 'adaeze.obi@example.com' },
+      services: [{ name: 'Gentle cleanser', price: 2500, quantity: 1, fulfillmentId: 'order-1' }],
+      appointment: { fulfillment_id: 'order-appointment' },
+    })
+    expect(payload.line_items[0].fulfillment_id).toBe('order-1')
+    expect(payload.fulfillment_id).toBe('order-appointment')
   })
 })
 

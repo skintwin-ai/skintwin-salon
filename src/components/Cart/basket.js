@@ -4,7 +4,7 @@ import { graphql, useStaticQuery } from 'gatsby'
 import { GatsbyImage, getImage } from 'gatsby-plugin-image'
 
 import { BookingContext } from '../../context/booking-context'
-import { buildInvoicePayload, formatCurrency, formatDuration } from '../../utils/booking'
+import { buildInvoicePayload, formatCurrency, formatDuration, terminalInvoicePayload } from '../../utils/booking'
 import './cart.scss'
 
 const Basket = ({ services, status, client, appointment }) => {
@@ -54,16 +54,11 @@ const Basket = ({ services, status, client, appointment }) => {
     return formatCurrency(total)
   }
 
-  const pushToTerminal = (id, offline_reference) => {
-    const payload = {
-      id,
-      offline_reference,
-    }
-
+  const pushToTerminal = (invoice) => {
     return fetch('/api/push_to_terminal', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
+      body: JSON.stringify(terminalInvoicePayload(invoice)),
     })
       .then((response) => response.json())
       .catch(function (err) {
@@ -99,8 +94,12 @@ const Basket = ({ services, status, client, appointment }) => {
         const offline_reference = invoice.offline_reference
         if (id) {
           booking?.setInvoiceDetails(id, offline_reference || '')
-          booking?.setCheckoutStatus('pending')
-          return pushToTerminal(id, offline_reference)
+          return pushToTerminal(invoice).then((terminal) => {
+            if (!terminal || terminal.status !== true) {
+              throw new Error(terminal?.message || 'Unable to send invoice to the terminal')
+            }
+            booking?.setCheckoutStatus('pending')
+          })
         }
         throw new Error(response.message || 'Unable to create invoice')
       })

@@ -5,6 +5,7 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deliveriesAddedByUpdate, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
+import { invoiceLineItem, terminalInvoicePayload } from "./src/utils/invoice-payload.mjs";
 
 test("salon api accepts a stock transfer", () => {
   const result = salonSupplyChainResponse("POST", "/api/supply-chain", {
@@ -170,6 +171,31 @@ test("a repeated replenishment shipment does not move more stock", () => {
     if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
     else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
+});
+
+test("checkout forwards a named fulfillment and leaves a service line unsettled", () => {
+  const service = invoiceLineItem({ name: "Signature Facial", price: 8500, quantity: 1 });
+  assert.equal(service.fulfillment_id, undefined);
+  assert.equal(invoiceSettlementCommands(terminalInvoicePayload({
+    id: "INV_LOCAL_1",
+    line_items: [service],
+  })).length, 0);
+  const product = invoiceLineItem({
+    name: "Gentle cleanser",
+    price: 2500,
+    quantity: 1,
+    fulfillmentId: "order-1",
+  });
+  const commands = invoiceSettlementCommands(terminalInvoicePayload({
+    id: "INV_LOCAL_1",
+    offline_reference: "OFF_INV_LOCAL_1",
+    currency: "NGN",
+    line_items: [product],
+  }));
+  assert.equal(commands.length, 1);
+  assert.equal(commands[0].args.fulfillment_id, "order-1");
+  assert.equal(commands[0].args.amount_cents, 250000);
+  assert.equal(commands[0].args.currency, "NGN");
 });
 
 test("a service invoice does not settle a fulfillment", () => {
