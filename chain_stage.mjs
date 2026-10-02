@@ -114,11 +114,10 @@ export function recordDeliveries(appointmentId, services) {
   }
   if (commands.length === 0) return { ok: true, count: 0 };
   if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
-  for (const command of commands) {
-    const accepted = handleStage(command);
-    if (!accepted.ok) return accepted;
-  }
-  return { ok: true, count: commands.length };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
 }
 
 export function handleStage(request) {
