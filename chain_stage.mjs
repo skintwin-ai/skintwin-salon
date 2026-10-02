@@ -192,7 +192,7 @@ export function invoiceSettlementCommands(invoice) {
   }
   const currency = text(invoice.currency || "NGN", "currency").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("currency must be a 3-letter code");
-  const invoiceId = text(invoice.id || invoice.offline_reference, "invoice id");
+  const invoiceId = text(namedField(invoice, "id", "offline_reference"), "invoice id");
   const explicit = namedField(invoice, "settlementId", "settlement_id");
   return [...groups.entries()].map(([fulfillmentId, amountCents], index) => ({
     command: "settle",
