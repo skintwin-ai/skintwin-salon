@@ -627,6 +627,97 @@ test("a paid invoice named by a blank id settles the offline reference once", ()
   }
 });
 
+test("a paid invoice with a blank currency settles in NGN once", () => {
+  const present = invoiceSettlementCommands({
+    id: "INV_LOCAL_1",
+    currency: " zar ",
+    line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+  });
+  assert.equal(present[0].args.currency, "ZAR");
+  const fallen = invoiceSettlementCommands({
+    id: "INV_BLANK",
+    currency: "  ",
+    line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+  });
+  assert.equal(fallen[0].args.currency, "NGN");
+  assert.equal(fallen[0].args.fulfillment_id, "order-1");
+  assert.throws(
+    () =>
+      invoiceSettlementCommands({
+        id: "INV_BAD",
+        currency: "US",
+        line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+      }),
+    /currency must be a 3-letter code/,
+  );
+  const dir = mkdtempSync(join(tmpdir(), "salon-currency-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+    cwd: hub,
+    input: JSON.stringify({
+      commands: [
+        { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+        { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+        { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 5000 } },
+        { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 5000]] } },
+        { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+        { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 5000]] } },
+        { command: "transfer", args: { transfer_id: "xfer-cape-town", sku_id: "sku-cleanser", batch_id: "batch-cleanser", source: "plant", destination: "cape-town", milligrams: 2000 } },
+        { command: "fulfill", args: { fulfillment_id: "order-1", sku_id: "sku-cleanser", location: "cape-town", milligrams: 2000, kind: "retail" } },
+      ],
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+  try {
+    const unnamed = recordInvoiceSettlement({
+      id: "INV_SERVICE",
+      currency: "  ",
+      line_items: [{ name: "Signature Facial", amount: 250000, quantity: 1 }],
+    });
+    assert.equal(unnamed.ok, true);
+    assert.equal(unnamed.count, 0);
+    const before = readFileSync(ledger, "utf8");
+    assert.equal(before.includes("INV_SERVICE"), false);
+    const rejected = recordInvoiceSettlement({
+      id: "INV_BAD",
+      currency: "US",
+      line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+    });
+    assert.equal(rejected.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), before);
+    const paid = recordInvoiceSettlement({
+      id: "INV_BLANK",
+      currency: "  ",
+      line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+    });
+    assert.equal(paid.ok, true);
+    assert.equal(paid.count, 1);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes("pay-INV_BLANK:0:order-1"), true);
+    assert.equal(recorded.includes('"NGN"'), true);
+    const again = recordInvoiceSettlement({
+      id: "INV_BLANK",
+      currency: "  ",
+      line_items: [{ name: "Gentle cleanser", amount: 250000, quantity: 1, fulfillment_id: "order-1" }],
+    });
+    assert.equal(again.ok, false);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});
+
 test("salon api rejects a transfer to the same location", () => {
   const result = salonSupplyChainResponse("POST", "/api/supply-chain", {
     command: "transfer",

@@ -58,6 +58,10 @@ function text(value, label) {
   return value.trim();
 }
 
+function namedCurrency(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
 function positive(value, label) {
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${label} must be a positive integer`);
@@ -190,7 +194,7 @@ export function invoiceSettlementCommands(invoice) {
     if (!Number.isInteger(cents) || cents < 1) throw new Error("amount_cents must be a positive integer");
     groups.set(fulfillmentId, cents);
   }
-  const currency = text(invoice.currency || "NGN", "currency").toUpperCase();
+  const currency = text(namedCurrency(invoice.currency) || "NGN", "currency").toUpperCase();
   if (!/^[A-Z]{3}$/.test(currency)) throw new Error("currency must be a 3-letter code");
   const invoiceId = text(namedField(invoice, "id", "offline_reference"), "invoice id");
   const explicit = namedField(invoice, "settlementId", "settlement_id");
