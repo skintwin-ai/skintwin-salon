@@ -79,6 +79,26 @@ export function transfer(args) {
   };
 }
 
+export function deliveriesAddedByUpdate(appointmentId, existingServices, nextServices) {
+  text(appointmentId, "appointment id");
+  if (!Array.isArray(nextServices)) return [];
+  const prior = new Set();
+  if (Array.isArray(existingServices)) {
+    existingServices.forEach((service, index) => {
+      if (service?.delivery) prior.add(index);
+    });
+  }
+  return nextServices.map((service, index) => {
+    if (!service || typeof service !== "object" || !service.delivery || prior.has(index)) {
+      if (!service || typeof service !== "object") return service;
+      const copy = { ...service };
+      delete copy.delivery;
+      return copy;
+    }
+    return service;
+  });
+}
+
 export function deliveriesForAppointment(appointmentId, services) {
   const id = text(appointmentId, "appointment id");
   if (!Array.isArray(services)) throw new Error("services are required");

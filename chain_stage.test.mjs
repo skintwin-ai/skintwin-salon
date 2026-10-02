@@ -4,7 +4,7 @@ import test from "node:test";
 import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
+import { deliveriesAddedByUpdate, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
 
 test("salon api accepts a stock transfer", () => {
   const result = salonSupplyChainResponse("POST", "/api/supply-chain", {
@@ -54,6 +54,76 @@ test("a delivery against an empty ledger is rejected", () => {
   } finally {
     if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+  }
+});
+
+test("an updated appointment moves only a delivery it did not already record", () => {
+  const first = {
+    delivery: {
+      sku_id: "sku-cleanser",
+      batch_id: "batch-cleanser",
+      source: "plant",
+      destination: "cape-town",
+      milligrams: 2000,
+    },
+  };
+  const added = {
+    delivery: {
+      sku_id: "sku-cleanser",
+      batch_id: "batch-cleanser",
+      source: "plant",
+      destination: "johannesburg",
+      milligrams: 2000,
+    },
+  };
+  const kept = deliveriesAddedByUpdate("apt-1", [first], [first, added]);
+  assert.equal(kept[0].delivery, undefined);
+  assert.equal(kept[1].delivery.destination, "johannesburg");
+  assert.deepEqual(deliveriesAddedByUpdate("apt-1", [first, added], [first, added])[1].delivery, undefined);
+  const dir = mkdtempSync(join(tmpdir(), "salon-update-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+    cwd: hub,
+    input: JSON.stringify({
+      commands: [
+        { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+        { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+        { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+        { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+        { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+        { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+      ],
+    }),
+    encoding: "utf8",
+  });
+  assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+  try {
+    const created = recordDeliveries("apt-1", [first]);
+    assert.equal(created.ok, true);
+    assert.equal(created.count, 1);
+    const updated = recordDeliveries("apt-1", deliveriesAddedByUpdate("apt-1", [first], [first, added]));
+    assert.equal(updated.ok, true);
+    assert.equal(updated.count, 1);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.includes("apt-1:0"), true);
+    assert.equal(recorded.includes("apt-1:1"), true);
+    assert.equal(recorded.split("apt-1:0").length - 1, 1);
+    const again = recordDeliveries("apt-1", deliveriesAddedByUpdate("apt-1", [first, added], [first, added]));
+    assert.equal(again.ok, true);
+    assert.equal(again.count, 0);
+    assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
   }
 });
 
