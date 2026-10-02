@@ -124,6 +124,79 @@ export function recordDeliveries(appointmentId, services) {
   return committed.ok ? { ok: true, count: commands.length } : committed;
 }
 
+function named(value) {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function minorUnits(value, label) {
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1) return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const cents = Math.round(value * 100);
+    if (Number.isInteger(cents) && cents >= 1) return cents;
+  }
+  throw new Error(`${label} must be a positive integer`);
+}
+
+function lineMinorUnits(line, index) {
+  const unit = minorUnits(line?.amount_cents ?? line?.amount, `line ${index} amount`);
+  const quantity = line?.quantity == null ? 1 : line.quantity;
+  if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1) {
+    throw new Error("quantity must be a positive integer");
+  }
+  return unit * quantity;
+}
+
+export function invoiceSettlementCommands(invoice) {
+  if (!invoice || typeof invoice !== "object") throw new Error("invoice is required");
+  const lines = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+  const groups = new Map();
+  lines.forEach((line, index) => {
+    const fulfillmentId = named(line?.fulfillment_id);
+    if (!fulfillmentId) return;
+    groups.set(fulfillmentId, (groups.get(fulfillmentId) || 0) + lineMinorUnits(line, index));
+  });
+  if (groups.size === 0) {
+    const fulfillmentId = named(invoice.fulfillment_id);
+    if (!fulfillmentId) return [];
+    const stated = invoice.amount_cents ?? invoice.amount;
+    const cents =
+      stated == null
+        ? lines.reduce((sum, line, index) => sum + lineMinorUnits(line, index), 0)
+        : minorUnits(stated, "amount_cents");
+    if (!Number.isInteger(cents) || cents < 1) throw new Error("amount_cents must be a positive integer");
+    groups.set(fulfillmentId, cents);
+  }
+  const currency = text(invoice.currency || "NGN", "currency").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("currency must be a 3-letter code");
+  const invoiceId = text(invoice.id || invoice.offline_reference, "invoice id");
+  const explicit = named(invoice.settlement_id);
+  return [...groups.entries()].map(([fulfillmentId, amountCents], index) => ({
+    command: "settle",
+    args: {
+      settlement_id:
+        groups.size === 1 && explicit ? explicit : `pay-${invoiceId}:${index}:${fulfillmentId}`,
+      fulfillment_id: fulfillmentId,
+      amount_cents: amountCents,
+      currency,
+    },
+  }));
+}
+
+export function recordInvoiceSettlement(invoice) {
+  let commands;
+  try {
+    commands = invoiceSettlementCommands(invoice);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
 export function recordReplenishment(shipmentId) {
   let shipment;
   try {
