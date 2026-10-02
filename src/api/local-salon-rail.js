@@ -1,5 +1,6 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { recordDeliveries, recordInvoiceSettlement, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { deliveriesAddedByUpdate, recordDeliveries, recordInvoiceSettlement, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { getAppointment, saveAppointment } from './_store.js'
 
 async function persistSalonSync(action, payload) {
   const apiUrl = (process.env.SKINTWIN_API_URL || '').replace(/\/$/, '')
@@ -27,6 +28,26 @@ async function persistSalonSync(action, payload) {
     }
   }
   return { synced: false, mode: 'local', persisted: true }
+}
+
+function appointmentRecord(body, existing = {}) {
+  return {
+    ...existing,
+    id: body.id || existing.id,
+    services: body.services || existing.services,
+    date: body.date || existing.date,
+    startTime: body.startTime || existing.startTime,
+    endTime: body.endTime || existing.endTime || null,
+    providerId: body.providerId || existing.providerId,
+    roomId: body.roomId || existing.roomId || null,
+    client: body.client || existing.client,
+    status: body.status || existing.status || 'draft',
+    totalAmount: body.totalAmount ?? existing.totalAmount ?? 0,
+    currency: body.currency || existing.currency || 'NGN',
+    notes: body.notes || existing.notes,
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || new Date().toISOString(),
+  }
 }
 
 export async function handleSalonApi(method, pathname, body = {}) {
@@ -58,6 +79,53 @@ export async function handleSalonApi(method, pathname, body = {}) {
       return { status: 400, body: { status: false, message: settled.error } }
     }
     return { status: 200, body: localPaystackTerminal(body) }
+  }
+
+  if (pathname === '/api/appointments/create' && method === 'POST') {
+    for (const field of ['services', 'date', 'startTime', 'providerId', 'client']) {
+      if (!body[field]) {
+        return { status: 400, body: { status: false, message: `Missing required field: ${field}` } }
+      }
+    }
+    if (!Array.isArray(body.services) || body.services.length === 0) {
+      return { status: 400, body: { status: false, message: 'At least one service is required' } }
+    }
+    if (!body.client.consentAccepted) {
+      return { status: 400, body: { status: false, message: 'Client consent is required' } }
+    }
+    const appointmentId = body.id || `APT_${Date.now()}`
+    const delivered = recordDeliveries(appointmentId, body.services)
+    if (!delivered.ok) {
+      return { status: 400, body: { status: false, message: delivered.error } }
+    }
+    const appointment = appointmentRecord({ ...body, id: appointmentId })
+    saveAppointment(appointment)
+    return {
+      status: 201,
+      body: { status: true, message: 'Appointment created successfully', data: appointment },
+    }
+  }
+
+  if (pathname === '/api/appointments/update' && (method === 'PUT' || method === 'POST')) {
+    if (!body.id) {
+      return { status: 400, body: { status: false, message: 'Appointment ID is required' } }
+    }
+    const existing = getAppointment(body.id) || { id: body.id }
+    if (body.services) {
+      const delivered = recordDeliveries(
+        body.id,
+        deliveriesAddedByUpdate(body.id, existing.services, body.services),
+      )
+      if (!delivered.ok) {
+        return { status: 400, body: { status: false, message: delivered.error } }
+      }
+    }
+    const appointment = appointmentRecord(body, existing)
+    saveAppointment(appointment)
+    return {
+      status: 200,
+      body: { status: true, message: 'Appointment updated successfully', data: appointment },
+    }
   }
 
   if (pathname === '/api/integrations/skintwin' && method === 'POST') {

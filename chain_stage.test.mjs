@@ -5,6 +5,8 @@ import { existsSync, mkdtempSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deliveriesAddedByUpdate, invoiceSettlementCommands, loadChainLocate, recordDeliveries, recordInvoiceSettlement, recordReplenishment, salonSupplyChainResponse } from "./chain_stage.mjs";
+import { handleSalonApi } from "./src/api/local-salon-rail.js";
+import { getAppointment } from "./src/api/_store.js";
 import { invoiceLineItem, terminalInvoicePayload } from "./src/utils/invoice-payload.mjs";
 
 test("salon api accepts a stock transfer", () => {
@@ -288,6 +290,104 @@ test("a paid invoice appends one settlement for a recorded sale", () => {
     });
     assert.equal(again.ok, false);
     assert.equal(readFileSync(ledger, "utf8"), recorded);
+  } finally {
+    if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
+    else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
+    if (previousHub === undefined) delete process.env.SKINTWIN_HUB_ROOT;
+    else process.env.SKINTWIN_HUB_ROOT = previousHub;
+  }
+});
+
+test("the local rail records a named delivery when an appointment is created or updated", async () => {
+  const dir = mkdtempSync(join(tmpdir(), "salon-rail-"));
+  const ledger = join(dir, "supply-chain.jsonl");
+  const locate = loadChainLocate();
+  assert.ok(locate);
+  const hub = locate.hubRoot();
+  const previousLedger = process.env.SKINTWIN_CHAIN_LEDGER;
+  const previousHub = process.env.SKINTWIN_HUB_ROOT;
+  process.env.SKINTWIN_CHAIN_LEDGER = ledger;
+  process.env.SKINTWIN_HUB_ROOT = hub;
+  const client = { consentAccepted: true };
+  const facial = { id: "srv-001", name: "Signature Facial" };
+  const delivery = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "cape-town",
+    milligrams: 2000,
+  };
+  const added = {
+    sku_id: "sku-cleanser",
+    batch_id: "batch-cleanser",
+    source: "plant",
+    destination: "johannesburg",
+    milligrams: 2000,
+  };
+  const booking = {
+    date: "2026-10-02",
+    startTime: "10:00",
+    providerId: "prv-001",
+    client,
+  };
+  try {
+    const serviceOnly = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      services: [facial],
+    });
+    assert.equal(serviceOnly.status, 201);
+    assert.equal(existsSync(ledger), false);
+
+    const rejected = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-empty",
+      services: [{ delivery }],
+    });
+    assert.equal(rejected.status, 400);
+    assert.equal(existsSync(ledger), false);
+    assert.equal(getAppointment("apt-empty"), null);
+
+    const seeded = spawnSync("python3", ["-m", "domain.ledger"], {
+      cwd: hub,
+      input: JSON.stringify({
+        commands: [
+          { command: "specify_ingredient", args: { ingredient_id: "glycerin", inci: "Glycerin", cas: "56-81-5" } },
+          { command: "qualify_supplier", args: { qualification_id: "qual-glycerin", supplier_name: "Inland Humectants", ingredient_id: "glycerin" } },
+          { command: "receive_lot", args: { lot_id: "lot-glycerin", ingredient_id: "glycerin", qualification_id: "qual-glycerin", milligrams: 8000 } },
+          { command: "define_formula", args: { formula_id: "cleanser", name: "Gentle cleanser", lines: [["glycerin", 8000]] } },
+          { command: "catalog_sku", args: { sku_id: "sku-cleanser", formula_id: "cleanser", name: "Gentle cleanser" } },
+          { command: "manufacture", args: { batch_id: "batch-cleanser", sku_id: "sku-cleanser", units: 1, allocations: [["glycerin", "lot-glycerin", 8000]] } },
+        ],
+      }),
+      encoding: "utf8",
+    });
+    assert.equal(seeded.status, 0, seeded.stderr || seeded.stdout);
+
+    const created = await handleSalonApi("POST", "/api/appointments/create", {
+      ...booking,
+      id: "apt-rail",
+      services: [{ delivery }],
+    });
+    assert.equal(created.status, 201);
+    const recorded = readFileSync(ledger, "utf8");
+    assert.equal(recorded.split("apt-rail:0").length - 1, 1);
+    assert.equal(recorded.includes("apt-rail:1"), false);
+
+    const updated = await handleSalonApi("POST", "/api/appointments/update", {
+      id: "apt-rail",
+      services: [{ delivery }, { delivery: added }],
+    });
+    assert.equal(updated.status, 200);
+    const afterUpdate = readFileSync(ledger, "utf8");
+    assert.equal(afterUpdate.split("apt-rail:0").length - 1, 1);
+    assert.equal(afterUpdate.split("apt-rail:1").length - 1, 1);
+
+    const again = await handleSalonApi("POST", "/api/appointments/update", {
+      id: "apt-rail",
+      services: [{ delivery }, { delivery: added }],
+    });
+    assert.equal(again.status, 200);
+    assert.equal(readFileSync(ledger, "utf8"), afterUpdate);
   } finally {
     if (previousLedger === undefined) delete process.env.SKINTWIN_CHAIN_LEDGER;
     else process.env.SKINTWIN_CHAIN_LEDGER = previousLedger;
