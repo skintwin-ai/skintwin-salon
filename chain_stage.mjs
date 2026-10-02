@@ -170,16 +170,11 @@ function sameTransfer(prior, args) {
   return ["sku_id", "batch_id", "source", "destination", "milligrams"].every((key) => prior[key] === args[key]);
 }
 
-export function recordSyncedDelivery(appointmentId, services) {
-  if (!Array.isArray(services) || !services.some((service) => service && typeof service === "object" && service.delivery)) {
-    return { ok: true, count: 0 };
-  }
-  let commands;
-  try {
-    commands = deliveriesForAppointment(appointmentId, services);
-  } catch (error) {
-    return { ok: false, error: error.message };
-  }
+function namesDelivery(services) {
+  return Array.isArray(services) && services.some((service) => service && typeof service === "object" && service.delivery);
+}
+
+function commitFreshTransfers(commands) {
   if (commands.length === 0) return { ok: true, count: 0 };
   const fresh = [];
   for (const command of commands) {
@@ -196,6 +191,38 @@ export function recordSyncedDelivery(appointmentId, services) {
   if (!locate) return { ok: false, error: "supply-chain hub is not present" };
   const committed = locate.commitCommands(fresh);
   return committed.ok ? { ok: true, count: fresh.length } : committed;
+}
+
+export function recordSyncedDelivery(appointmentId, services) {
+  if (!namesDelivery(services)) return { ok: true, count: 0 };
+  let commands;
+  try {
+    commands = deliveriesForAppointment(appointmentId, services);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  return commitFreshTransfers(commands);
+}
+
+export function recordSyncedCancellation(appointmentId, services) {
+  if (!namesDelivery(services)) return recordAppointmentCancellation(appointmentId);
+  let commands;
+  try {
+    commands = deliveriesForAppointment(appointmentId, services).map((command) => ({
+      command: "transfer",
+      args: {
+        transfer_id: `return:${command.args.transfer_id}`,
+        sku_id: command.args.sku_id,
+        batch_id: command.args.batch_id,
+        source: command.args.destination,
+        destination: command.args.source,
+        milligrams: command.args.milligrams,
+      },
+    }));
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  return commitFreshTransfers(commands);
 }
 
 function deliveryTransfers(appointmentId) {

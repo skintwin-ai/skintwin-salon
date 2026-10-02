@@ -1,5 +1,5 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { recordAppointmentCancellation, recordInvoiceSettlement, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { recordAppointmentCancellation, recordInvoiceSettlement, recordSyncedCancellation, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
 import { invoiceAppointmentId, invoiceServicesForLedger } from '../utils/invoice-payload.mjs'
 import { getAppointment, saveAppointment } from './_store.js'
 
@@ -168,10 +168,10 @@ export async function handleSalonApi(method, pathname, body = {}) {
       return { status: 400, body: { status: false, message: 'action is required' } }
     }
     if (action === 'sync_appointment' || action === 'log_treatment') {
-      const delivered = recordSyncedDelivery(
-        action === 'log_treatment' ? payload?.appointmentId : payload?.id,
-        payload?.services,
-      )
+      const appointmentId = action === 'log_treatment' ? payload?.appointmentId : payload?.id
+      const delivered = payload?.status === 'cancelled'
+        ? recordSyncedCancellation(appointmentId, payload?.services)
+        : recordSyncedDelivery(appointmentId, payload?.services)
       if (!delivered.ok) {
         return { status: 400, body: { status: false, message: delivered.error } }
       }
