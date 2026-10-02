@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Salon distribution commands for the local salon API and the hub ledger.
 
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -106,6 +107,9 @@ export function useSharedLedger() {
 }
 
 export function recordDeliveries(appointmentId, services) {
+  if (services && typeof services === "object" && !Array.isArray(services) && services.replenish === true) {
+    return recordReplenishment(appointmentId);
+  }
   let commands;
   try {
     commands = deliveriesForAppointment(appointmentId, services);
@@ -116,6 +120,41 @@ export function recordDeliveries(appointmentId, services) {
   if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
   const locate = loadChainLocate();
   if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
+export function recordReplenishment(shipmentId) {
+  let shipment;
+  try {
+    shipment = text(shipmentId, "shipment id");
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const hub = locate.hubRoot();
+  const child = spawnSync("python3", ["-m", "domain.metagraph", "--replenish", shipment], {
+    cwd: hub,
+    encoding: "utf8",
+  });
+  let commands;
+  try {
+    commands = JSON.parse(child.stdout || "null");
+  } catch {
+    commands = null;
+  }
+  if (child.status !== 0 || !Array.isArray(commands)) {
+    const message = commands && commands.error ? commands.error : child.stderr || "replenishment rejected";
+    return { ok: false, error: message };
+  }
+  try {
+    commands.forEach((command) => transfer(command.args || {}));
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
   const committed = locate.commitCommands(commands);
   return committed.ok ? { ok: true, count: commands.length } : committed;
 }
@@ -143,6 +182,10 @@ function commitStage(request, result) {
 
 export function salonSupplyChainResponse(method, pathname, body) {
   if (pathname !== "/api/supply-chain" || method !== "POST") return null;
+  if (body?.command === "replenish") {
+    const result = recordReplenishment(body.args?.shipment_id);
+    return { status: result.ok ? 200 : 400, body: result };
+  }
   const result = handleStage(body);
   return { status: result.ok ? 200 : 400, body: result };
 }
