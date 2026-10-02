@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 // Salon distribution commands for the local salon API and the hub ledger.
 
-import { readFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, readFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
 function text(value, label) {
@@ -37,10 +38,35 @@ export function handleStage(request) {
     return { ok: false, error: `unknown command ${request?.command}` };
   }
   try {
-    return { ok: true, artifact: transfer(request.args || {}) };
+    return commitStage(request, { ok: true, artifact: transfer(request.args || {}) });
   } catch (error) {
     return { ok: false, error: error.message };
   }
+}
+
+function commitStage(request, result) {
+  if (!result.ok || process.env.SKINTWIN_CHAIN_SKIP_DISPATCH === "1") return result;
+  const ledger = process.env.SKINTWIN_CHAIN_LEDGER;
+  if (!ledger) return result;
+  const hub = process.env.SKINTWIN_HUB_ROOT
+    || ["/agent/repos/skintwin-ecosystem-design", "/workspace/repos/skintwin-ecosystem-design"]
+      .find((candidate) => existsSync(`${candidate}/domain/ledger.py`));
+  if (!hub) return { ok: false, error: "supply-chain hub is not present" };
+  const child = spawnSync("python3", ["-m", "domain.ledger"], {
+    cwd: hub,
+    input: JSON.stringify(request),
+    encoding: "utf8",
+  });
+  if (child.status !== 0) {
+    let message = child.stderr;
+    try {
+      message = JSON.parse(child.stdout || "{}").error || message;
+    } catch {
+      message = message || "ledger rejected the command";
+    }
+    return { ok: false, error: message || "ledger rejected the command" };
+  }
+  return result;
 }
 
 export function salonSupplyChainResponse(method, pathname, body) {
