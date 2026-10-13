@@ -1,5 +1,7 @@
 import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
-import { recordDeliveries, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { recordAppointmentCancellation, recordInvoiceSettlement, recordSyncedCancellation, recordSyncedDelivery, salonSupplyChainResponse } from '../../chain_stage.mjs'
+import { invoiceAppointmentId, invoiceServicesForLedger } from '../utils/invoice-payload.mjs'
+import { getAppointment, saveAppointment } from './_store.js'
 
 async function persistSalonSync(action, payload) {
   const apiUrl = (process.env.SKINTWIN_API_URL || '').replace(/\/$/, '')
@@ -29,16 +31,34 @@ async function persistSalonSync(action, payload) {
   return { synced: false, mode: 'local', persisted: true }
 }
 
+function appointmentRecord(body, existing = {}) {
+  return {
+    ...existing,
+    id: body.id || existing.id,
+    services: body.services || existing.services,
+    date: body.date || existing.date,
+    startTime: body.startTime || existing.startTime,
+    endTime: body.endTime || existing.endTime || null,
+    providerId: body.providerId || existing.providerId,
+    roomId: body.roomId || existing.roomId || null,
+    client: body.client || existing.client,
+    status: body.status || existing.status || 'draft',
+    totalAmount: body.totalAmount ?? existing.totalAmount ?? 0,
+    currency: body.currency || existing.currency || 'NGN',
+    notes: body.notes || existing.notes,
+    updatedAt: new Date().toISOString(),
+    createdAt: existing.createdAt || new Date().toISOString(),
+  }
+}
+
 export async function handleSalonApi(method, pathname, body = {}) {
   const supplyChain = salonSupplyChainResponse(method, pathname, body)
   if (supplyChain) return supplyChain
 
   if (pathname === '/api/create_invoice' && method === 'POST') {
-    if (Array.isArray(body.deliveries) && body.deliveries.length > 0) {
-      const delivered = recordDeliveries(
-        body.appointment_id || 'invoice',
-        body.deliveries.map((delivery) => ({ delivery })),
-      )
+    const services = invoiceServicesForLedger(body)
+    if (services.length > 0) {
+      const delivered = recordSyncedDelivery(invoiceAppointmentId(body), services)
       if (!delivered.ok) {
         return { status: 400, body: { status: false, message: delivered.error } }
       }
@@ -53,7 +73,87 @@ export async function handleSalonApi(method, pathname, body = {}) {
     if (!isLocalPaystackRail()) {
       return { status: 409, body: { status: false, message: 'Live Paystack keys are set' } }
     }
+    const settled = recordInvoiceSettlement(body)
+    if (!settled.ok) {
+      return { status: 400, body: { status: false, message: settled.error } }
+    }
     return { status: 200, body: localPaystackTerminal(body) }
+  }
+
+  if (pathname === '/api/appointments/create' && method === 'POST') {
+    for (const field of ['services', 'date', 'startTime', 'providerId', 'client']) {
+      if (!body[field]) {
+        return { status: 400, body: { status: false, message: `Missing required field: ${field}` } }
+      }
+    }
+    if (!Array.isArray(body.services) || body.services.length === 0) {
+      return { status: 400, body: { status: false, message: 'At least one service is required' } }
+    }
+    if (!body.client.consentAccepted) {
+      return { status: 400, body: { status: false, message: 'Client consent is required' } }
+    }
+    const appointmentId = body.id || `APT_${Date.now()}`
+    const delivered = body.status === 'cancelled'
+      ? recordSyncedCancellation(appointmentId, body.services)
+      : recordSyncedDelivery(appointmentId, body.services)
+    if (!delivered.ok) {
+      return { status: 400, body: { status: false, message: delivered.error } }
+    }
+    const appointment = appointmentRecord({ ...body, id: appointmentId })
+    saveAppointment(appointment)
+    return {
+      status: 201,
+      body: { status: true, message: 'Appointment created successfully', data: appointment },
+    }
+  }
+
+  if (pathname === '/api/appointments/update' && (method === 'PUT' || method === 'POST')) {
+    if (!body.id) {
+      return { status: 400, body: { status: false, message: 'Appointment ID is required' } }
+    }
+    const existing = getAppointment(body.id) || { id: body.id }
+    if (body.status === 'cancelled') {
+      const returned = recordSyncedCancellation(body.id, body.services)
+      if (!returned.ok) {
+        return { status: 400, body: { status: false, message: returned.error } }
+      }
+    } else if (body.services) {
+      const delivered = recordSyncedDelivery(body.id, body.services)
+      if (!delivered.ok) {
+        return { status: 400, body: { status: false, message: delivered.error } }
+      }
+    }
+    const appointment = appointmentRecord(body, existing)
+    saveAppointment(appointment)
+    return {
+      status: 200,
+      body: { status: true, message: 'Appointment updated successfully', data: appointment },
+    }
+  }
+
+  if (pathname === '/api/appointments/cancel' && method === 'POST') {
+    if (!body.id) {
+      return { status: 400, body: { status: false, message: 'Appointment ID is required' } }
+    }
+    const appointmentStatus = body.currentStatus || 'scheduled'
+    if (['completed', 'cancelled', 'no_show'].includes(appointmentStatus)) {
+      return {
+        status: 400,
+        body: { status: false, message: `Cannot cancel appointment with status: ${appointmentStatus}` },
+      }
+    }
+    const returned = recordAppointmentCancellation(body.id)
+    if (!returned.ok) {
+      return { status: 400, body: { status: false, message: returned.error } }
+    }
+    return {
+      status: 200,
+      body: {
+        status: true,
+        message: 'Appointment cancelled successfully',
+        data: { id: body.id, status: 'cancelled' },
+      },
+    }
   }
 
   if (pathname === '/api/integrations/skintwin' && method === 'POST') {
@@ -68,6 +168,15 @@ export async function handleSalonApi(method, pathname, body = {}) {
       }
     if (!action) {
       return { status: 400, body: { status: false, message: 'action is required' } }
+    }
+    if (action === 'sync_appointment' || action === 'log_treatment') {
+      const appointmentId = action === 'log_treatment' ? payload?.appointmentId : payload?.id
+      const delivered = payload?.status === 'cancelled'
+        ? recordSyncedCancellation(appointmentId, payload?.services)
+        : recordSyncedDelivery(appointmentId, payload?.services)
+      if (!delivered.ok) {
+        return { status: 400, body: { status: false, message: delivered.error } }
+      }
     }
     const result = await persistSalonSync(action, payload)
     return {

@@ -3,6 +3,7 @@
  * PUT /api/appointments/update
  */
 
+import { recordSyncedCancellation, recordSyncedDelivery } from '../../../chain_stage.mjs'
 import { parseRequestBody } from '../../utils/http'
 import { getAppointment, saveAppointment } from '../_store'
 import { syncWithPlatform } from '../integrations/skintwin-sync'
@@ -39,6 +40,23 @@ export default async function updateAppointment(req, res) {
     }
 
     const existing = getAppointment(data.id) || { id: data.id }
+    if (data.status === 'cancelled') {
+      const returned = recordSyncedCancellation(data.id, data.services)
+      if (!returned.ok) {
+        return res.status(400).json({
+          status: false,
+          message: returned.error,
+        })
+      }
+    } else if (data.services) {
+      const delivered = recordSyncedDelivery(data.id, data.services)
+      if (!delivered.ok) {
+        return res.status(400).json({
+          status: false,
+          message: delivered.error,
+        })
+      }
+    }
     const updatedAppointment = {
       ...existing,
       ...(data.services && { services: data.services }),

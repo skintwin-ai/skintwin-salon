@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 // Salon distribution commands for the local salon API and the hub ledger.
 
+import { spawnSync } from "node:child_process";
 import { createRequire } from "node:module";
 import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { basename, dirname, join } from "node:path";
@@ -57,10 +58,20 @@ function text(value, label) {
   return value.trim();
 }
 
+function namedCurrency(value) {
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
 function positive(value, label) {
+  value = wholeCount(value);
   if (!Number.isInteger(value) || value < 1) {
     throw new Error(`${label} must be a positive integer`);
   }
+  return value;
+}
+
+function wholeCount(value) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) return Number(value.trim());
   return value;
 }
 
@@ -78,6 +89,26 @@ export function transfer(args) {
   };
 }
 
+export function deliveriesAddedByUpdate(appointmentId, existingServices, nextServices) {
+  text(appointmentId, "appointment id");
+  if (!Array.isArray(nextServices)) return [];
+  const prior = new Set();
+  if (Array.isArray(existingServices)) {
+    existingServices.forEach((service, index) => {
+      if (service?.delivery) prior.add(index);
+    });
+  }
+  return nextServices.map((service, index) => {
+    if (!service || typeof service !== "object" || !service.delivery || prior.has(index)) {
+      if (!service || typeof service !== "object") return service;
+      const copy = { ...service };
+      delete copy.delivery;
+      return copy;
+    }
+    return service;
+  });
+}
+
 export function deliveriesForAppointment(appointmentId, services) {
   const id = text(appointmentId, "appointment id");
   if (!Array.isArray(services)) throw new Error("services are required");
@@ -87,11 +118,11 @@ export function deliveriesForAppointment(appointmentId, services) {
     if (!delivery) return;
     const args = {
       transfer_id: `${id}:${index}`,
-      sku_id: delivery.sku_id,
-      batch_id: delivery.batch_id,
+      sku_id: namedField(delivery, "skuId", "sku_id", "sku"),
+      batch_id: namedField(delivery, "batchId", "batch_id"),
       source: delivery.source,
       destination: delivery.destination,
-      milligrams: delivery.milligrams,
+      milligrams: positive(wholeCount(delivery.milligrams), "milligrams"),
     };
     transfer(args);
     commands.push({ command: "transfer", args });
@@ -106,6 +137,9 @@ export function useSharedLedger() {
 }
 
 export function recordDeliveries(appointmentId, services) {
+  if (services && typeof services === "object" && !Array.isArray(services) && services.replenish === true) {
+    return recordReplenishment(appointmentId);
+  }
   let commands;
   try {
     commands = deliveriesForAppointment(appointmentId, services);
@@ -116,6 +150,264 @@ export function recordDeliveries(appointmentId, services) {
   if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
   const locate = loadChainLocate();
   if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
+function priorTransfer(transferId) {
+  const raw = process.env.SKINTWIN_CHAIN_LEDGER;
+  if (!raw || !existsSync(raw)) return null;
+  let found = null;
+  for (const line of readFileSync(raw, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const record = JSON.parse(line);
+    if (record.command === "transfer" && record.args?.transfer_id === transferId) found = record.args;
+  }
+  return found;
+}
+
+function sameTransfer(prior, args) {
+  return ["sku_id", "batch_id", "source", "destination", "milligrams"].every((key) => prior[key] === args[key]);
+}
+
+function namesDelivery(services) {
+  return Array.isArray(services) && services.some((service) => service && typeof service === "object" && service.delivery);
+}
+
+function commitFreshTransfers(commands) {
+  if (commands.length === 0) return { ok: true, count: 0 };
+  const fresh = [];
+  for (const command of commands) {
+    const prior = priorTransfer(command.args.transfer_id);
+    if (!prior) {
+      fresh.push(command);
+      continue;
+    }
+    if (!sameTransfer(prior, command.args)) return { ok: false, error: "id already exists" };
+  }
+  if (fresh.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(fresh);
+  return committed.ok ? { ok: true, count: fresh.length } : committed;
+}
+
+export function recordSyncedDelivery(appointmentId, services) {
+  if (!namesDelivery(services)) return { ok: true, count: 0 };
+  let commands;
+  try {
+    commands = deliveriesForAppointment(appointmentId, services);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  return commitFreshTransfers(commands);
+}
+
+function reverseTransfer(prior) {
+  return {
+    transfer_id: `return:${prior.transfer_id}`,
+    sku_id: prior.sku_id,
+    batch_id: prior.batch_id,
+    source: prior.destination,
+    destination: prior.source,
+    milligrams: prior.milligrams,
+  };
+}
+
+export function recordSyncedCancellation(appointmentId, services) {
+  if (!namesDelivery(services)) return recordAppointmentCancellation(appointmentId);
+  let commands;
+  try {
+    const named = deliveriesForAppointment(appointmentId, services);
+    const namedIds = new Set();
+    commands = named.map((command) => {
+      namedIds.add(command.args.transfer_id);
+      const prior = priorTransfer(command.args.transfer_id);
+      const reverse = {
+        transfer_id: `return:${command.args.transfer_id}`,
+        sku_id: command.args.sku_id,
+        batch_id: command.args.batch_id,
+        source: command.args.destination,
+        destination: command.args.source,
+        milligrams: command.args.milligrams,
+      };
+      if (prior && !sameTransfer(reverseTransfer(prior), reverse)) throw new Error("id already exists");
+      return { command: "transfer", args: reverse };
+    });
+    for (const prior of deliveryTransfers(appointmentId)) {
+      if (namedIds.has(prior.transfer_id)) continue;
+      commands.push({ command: "transfer", args: reverseTransfer(prior) });
+    }
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  return commitFreshTransfers(commands);
+}
+
+function deliveryTransfers(appointmentId) {
+  const raw = process.env.SKINTWIN_CHAIN_LEDGER;
+  if (!raw || !existsSync(raw)) return [];
+  const prefix = `${appointmentId}:`;
+  const found = new Map();
+  for (const line of readFileSync(raw, "utf8").split("\n")) {
+    if (!line.trim()) continue;
+    const record = JSON.parse(line);
+    const transferId = record.command === "transfer" ? record.args?.transfer_id : "";
+    if (typeof transferId !== "string" || !transferId.startsWith(prefix)) continue;
+    if (!/^\d+$/.test(transferId.slice(prefix.length))) continue;
+    found.set(transferId, record.args);
+  }
+  return [...found.values()];
+}
+
+export function appointmentCancellationCommands(appointmentId) {
+  const id = text(String(appointmentId), "appointment id");
+  const commands = [];
+  for (const prior of deliveryTransfers(id)) {
+    const reverse = {
+      transfer_id: `return:${prior.transfer_id}`,
+      sku_id: prior.sku_id,
+      batch_id: prior.batch_id,
+      source: prior.destination,
+      destination: prior.source,
+      milligrams: prior.milligrams,
+    };
+    const existing = priorTransfer(reverse.transfer_id);
+    if (!existing) {
+      commands.push({ command: "transfer", args: reverse });
+      continue;
+    }
+    if (!sameTransfer(existing, reverse)) throw new Error("id already exists");
+  }
+  return commands;
+}
+
+export function recordAppointmentCancellation(appointmentId) {
+  let commands;
+  try {
+    commands = appointmentCancellationCommands(appointmentId);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
+function namedField(record, ...keys) {
+  for (const key of keys) {
+    const value = record?.[key];
+    if (typeof value === "string" && value.trim() !== "") return value.trim();
+  }
+  return "";
+}
+
+function minorUnits(value, label) {
+  if (typeof value === "string" && /^\d+$/.test(value.trim())) value = Number(value.trim());
+  if (typeof value === "number" && Number.isInteger(value) && value >= 1) return value;
+  if (typeof value === "number" && Number.isFinite(value)) {
+    const cents = Math.round(value * 100);
+    if (Number.isInteger(cents) && cents >= 1) return cents;
+  }
+  throw new Error(`${label} must be a positive integer`);
+}
+
+function lineMinorUnits(line, index) {
+  const unit = minorUnits(line?.amount_cents ?? line?.amount, `line ${index} amount`);
+  const raw = line?.quantity;
+  const quantity = raw == null || (typeof raw === "string" && raw.trim() === "") ? 1 : wholeCount(raw);
+  if (typeof quantity !== "number" || !Number.isInteger(quantity) || quantity < 1) {
+    throw new Error("quantity must be a positive integer");
+  }
+  return unit * quantity;
+}
+
+export function invoiceSettlementCommands(invoice) {
+  if (!invoice || typeof invoice !== "object") throw new Error("invoice is required");
+  const lines = Array.isArray(invoice.line_items) ? invoice.line_items : [];
+  const groups = new Map();
+  lines.forEach((line, index) => {
+    const fulfillmentId = namedField(line, "fulfillmentId", "fulfillment_id");
+    if (!fulfillmentId) return;
+    groups.set(fulfillmentId, (groups.get(fulfillmentId) || 0) + lineMinorUnits(line, index));
+  });
+  if (groups.size === 0) {
+    const fulfillmentId = namedField(invoice, "fulfillmentId", "fulfillment_id");
+    if (!fulfillmentId) return [];
+    const stated = invoice.amount_cents ?? invoice.amount;
+    const cents =
+      stated == null
+        ? lines.reduce((sum, line, index) => sum + lineMinorUnits(line, index), 0)
+        : minorUnits(stated, "amount_cents");
+    if (!Number.isInteger(cents) || cents < 1) throw new Error("amount_cents must be a positive integer");
+    groups.set(fulfillmentId, cents);
+  }
+  const currency = text(namedCurrency(invoice.currency) || "NGN", "currency").toUpperCase();
+  if (!/^[A-Z]{3}$/.test(currency)) throw new Error("currency must be a 3-letter code");
+  const invoiceId = text(namedField(invoice, "id", "offline_reference"), "invoice id");
+  const explicit = namedField(invoice, "settlementId", "settlement_id");
+  return [...groups.entries()].map(([fulfillmentId, amountCents], index) => ({
+    command: "settle",
+    args: {
+      settlement_id:
+        groups.size === 1 && explicit ? explicit : `pay-${invoiceId}:${index}:${fulfillmentId}`,
+      fulfillment_id: fulfillmentId,
+      amount_cents: amountCents,
+      currency,
+    },
+  }));
+}
+
+export function recordInvoiceSettlement(invoice) {
+  let commands;
+  try {
+    commands = invoiceSettlementCommands(invoice);
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const committed = locate.commitCommands(commands);
+  return committed.ok ? { ok: true, count: commands.length } : committed;
+}
+
+export function recordReplenishment(shipmentId) {
+  let shipment;
+  try {
+    shipment = text(shipmentId, "shipment id");
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (!useSharedLedger()) return { ok: false, error: "supply-chain hub is not present" };
+  const locate = loadChainLocate();
+  if (!locate) return { ok: false, error: "supply-chain hub is not present" };
+  const hub = locate.hubRoot();
+  const child = spawnSync("python3", ["-m", "domain.metagraph", "--replenish", shipment], {
+    cwd: hub,
+    encoding: "utf8",
+  });
+  let commands;
+  try {
+    commands = JSON.parse(child.stdout || "null");
+  } catch {
+    commands = null;
+  }
+  if (child.status !== 0 || !Array.isArray(commands)) {
+    const message = commands && commands.error ? commands.error : child.stderr || "replenishment rejected";
+    return { ok: false, error: message };
+  }
+  try {
+    commands.forEach((command) => transfer(command.args || {}));
+  } catch (error) {
+    return { ok: false, error: error.message };
+  }
+  if (commands.length === 0) return { ok: true, count: 0 };
   const committed = locate.commitCommands(commands);
   return committed.ok ? { ok: true, count: commands.length } : committed;
 }
@@ -137,12 +429,16 @@ function commitStage(request, result) {
   if (!ledger) return result;
   const locate = loadChainLocate();
   if (!locate) return { ok: false, error: "supply-chain hub is not present" };
-  const committed = locate.commitCommand(request);
+  const committed = locate.commitCommand({ command: request.command, args: result.artifact });
   return committed.ok ? result : committed;
 }
 
 export function salonSupplyChainResponse(method, pathname, body) {
   if (pathname !== "/api/supply-chain" || method !== "POST") return null;
+  if (body?.command === "replenish") {
+    const result = recordReplenishment(body.args?.shipment_id);
+    return { status: result.ok ? 200 : 400, body: result };
+  }
   const result = handleStage(body);
   return { status: result.ok ? 200 : 400, body: result };
 }

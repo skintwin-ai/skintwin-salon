@@ -2,6 +2,10 @@
  * Shared salon booking helpers used by pages, checkout, and confirmation.
  */
 
+import { checkoutDeliveryFields, fulfillmentIdOf, invoiceLineItem, terminalInvoicePayload } from './invoice-payload.mjs'
+
+export { terminalInvoicePayload }
+
 export function resolveServiceSelections(selections = [], catalog = []) {
   return (selections || [])
     .map((selection) => {
@@ -82,11 +86,8 @@ export function formatDisplayDate(dateStr) {
 }
 
 export function buildInvoicePayload({ client, services, appointment } = {}) {
-  const lineItems = (services || []).map((service) => ({
-    name: service.name,
-    amount: service.price * 100,
-    quantity: service.quantity || 1,
-  }))
+  const lineItems = (services || []).map((service) => invoiceLineItem(service))
+  const fulfillmentId = fulfillmentIdOf(appointment)
 
   const clientName =
     [client?.firstName, client?.lastName].filter(Boolean).join(' ') || 'Salon client'
@@ -98,6 +99,8 @@ export function buildInvoicePayload({ client, services, appointment } = {}) {
     customer: client?.email || undefined,
     description: `Salon booking for ${clientName}${when}`,
     line_items: lineItems,
+    ...(fulfillmentId ? { fulfillment_id: fulfillmentId } : {}),
+    ...checkoutDeliveryFields(services, appointment),
   }
 }
 

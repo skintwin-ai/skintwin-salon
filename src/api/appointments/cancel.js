@@ -3,6 +3,8 @@
  * POST /api/appointments/cancel
  */
 
+import { recordAppointmentCancellation } from '../../../chain_stage.mjs'
+
 export default async function cancelAppointment(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ status: false, message: 'Method not allowed' })
@@ -34,6 +36,14 @@ export default async function cancelAppointment(req, res) {
       return res.status(400).json({
         status: false,
         message: `Cannot cancel appointment with status: ${appointmentStatus}`,
+      })
+    }
+
+    const returned = recordAppointmentCancellation(data.id)
+    if (!returned.ok) {
+      return res.status(400).json({
+        status: false,
+        message: returned.error,
       })
     }
 
