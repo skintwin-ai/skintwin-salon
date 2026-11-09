@@ -43,8 +43,8 @@ test.describe('New Client Registration', () => {
     // Try to submit empty form
     await intakePage.attemptSubmit()
 
-    // Should show validation errors
-    await expect(intakePage.page.getByText(/required/i)).toBeVisible()
+    await expect(intakePage.page.getByTestId('error-firstName')).toBeVisible()
+    await expect(intakePage.page.getByTestId('error-email')).toBeVisible()
   })
 
   test('should validate email format', async ({ page }) => {
@@ -58,8 +58,7 @@ test.describe('New Client Registration', () => {
     await intakePage.attemptSubmit()
 
     // Should show email validation error
-    const emailError = page.getByText(/valid email/i)
-    await expect(emailError).toBeVisible()
+    await expect(page.getByTestId('error-email')).toBeVisible()
   })
 
   test('should validate phone format', async ({ page }) => {

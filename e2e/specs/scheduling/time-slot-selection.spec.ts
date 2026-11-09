@@ -63,15 +63,9 @@ test.describe('Time Slot Selection', () => {
   })
 
   test('should show selected time in summary', async ({ page }) => {
-    const timeSlot = page.getByTestId('time-slot-11:00')
-
-    if (await timeSlot.isVisible()) {
-      await timeSlot.click()
-
-      const summary = page.getByTestId('booking-summary')
-      if (await summary.isVisible()) {
-        await expect(summary).toContainText('11:00')
-      }
-    }
+    const timeSlot = page.getByTestId('time-slot-09:00')
+    await expect(timeSlot).toBeVisible()
+    await timeSlot.click()
+    await expect(page.getByTestId('selected-time')).toContainText('09:00')
   })
 })

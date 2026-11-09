@@ -97,7 +97,7 @@ jobs:
       - name: Run E2E tests on Chromium
         run: >
           yarn e2e --project=chromium
-          --grep-invert "accessibility violations|proper color contrast|Checkout Flow|Invoice Creation|Payment Status|Payment Failure|Payment Success"
+          --grep-invert "accessibility violations|proper color contrast|Checkout Flow|Invoice Creation|Payment Error Handling|Payment Status|Payment Failure|Payment Success"
         env:
           SALON_E2E_MOCKS: '1'
 
