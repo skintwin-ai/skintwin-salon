@@ -10,7 +10,9 @@ test.describe('Accessibility Audit', () => {
   ]
 
   for (const { path, name } of pages) {
-    test(`${name} page should have no accessibility violations @accessibility`, async ({ page }) => {
+    test(`${name} page should have no accessibility violations @accessibility`, async ({
+      page,
+    }) => {
       await page.goto(path)
 
       // Wait for page to fully load
