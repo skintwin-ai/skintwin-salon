@@ -48,6 +48,9 @@ jobs:
           GATSBY_PUSHER_SECRET: ${{ secrets.GATSBY_PUSHER_SECRET }}
           GATSBY_TERMINAL_ID: ${{ secrets.GATSBY_TERMINAL_ID }}
 
+      - name: Verify Gatsby cache for E2E serve
+        run: test -f .cache/match-paths.json
+
       - name: Upload build artifacts
         uses: actions/upload-artifact@v4
         with:
@@ -81,7 +84,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: .
+          path: _e2e-build
+
+      - name: Restore Gatsby build output
+        run: |
+          mkdir -p public .cache
+          cp -a _e2e-build/public/. public/
+          cp -a _e2e-build/.cache/. .cache/
+          test -f .cache/match-paths.json
 
       - name: Run E2E tests on Chromium
         run: yarn e2e --project=chromium
@@ -120,7 +130,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: .
+          path: _e2e-build
+
+      - name: Restore Gatsby build output
+        run: |
+          mkdir -p public .cache
+          cp -a _e2e-build/public/. public/
+          cp -a _e2e-build/.cache/. .cache/
+          test -f .cache/match-paths.json
 
       - name: Run E2E tests on Firefox
         run: yarn e2e --project=firefox
@@ -159,7 +176,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: .
+          path: _e2e-build
+
+      - name: Restore Gatsby build output
+        run: |
+          mkdir -p public .cache
+          cp -a _e2e-build/public/. public/
+          cp -a _e2e-build/.cache/. .cache/
+          test -f .cache/match-paths.json
 
       - name: Run E2E tests on WebKit
         run: yarn e2e --project=webkit
@@ -199,7 +223,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: .
+          path: _e2e-build
+
+      - name: Restore Gatsby build output
+        run: |
+          mkdir -p public .cache
+          cp -a _e2e-build/public/. public/
+          cp -a _e2e-build/.cache/. .cache/
+          test -f .cache/match-paths.json
 
       - name: Run E2E tests on Mobile
         run: yarn e2e --project=mobile-chrome --project=mobile-safari
@@ -238,7 +269,14 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: .
+          path: _e2e-build
+
+      - name: Restore Gatsby build output
+        run: |
+          mkdir -p public .cache
+          cp -a _e2e-build/public/. public/
+          cp -a _e2e-build/.cache/. .cache/
+          test -f .cache/match-paths.json
 
       - name: Run accessibility tests
         run: yarn e2e --project=chromium --grep="@accessibility"
