@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../../extend-test'
 
 test.describe('Network Failure', () => {
   test('should handle API network failure gracefully', async ({ page }) => {

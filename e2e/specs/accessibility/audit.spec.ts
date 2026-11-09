@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../../extend-test'
 import AxeBuilder from '@axe-core/playwright'
 
 test.describe('Accessibility Audit', () => {

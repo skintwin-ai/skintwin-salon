@@ -16,7 +16,9 @@ const Layout = ({ pageTitle, children }) => {
         Skip to main content
       </a>
       <Nav />
-      <div id="main-content">{children}</div>
+      <div id="main-content" tabIndex={-1}>
+        {children}
+      </div>
     </main>
   )
 }

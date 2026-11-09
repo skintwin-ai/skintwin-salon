@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../../extend-test'
 import { BookingPage } from '../../pages/booking.page'
 import { HomePage } from '../../pages/home.page'
 import { getTomorrowDate } from '../../helpers/booking-flow'

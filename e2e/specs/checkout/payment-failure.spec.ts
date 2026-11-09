@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../../extend-test'
 import { CheckoutPage } from '../../pages/checkout.page'
 import { mockPaystackApi } from '../../mocks/paystack'
 import { injectPusherMock, simulatePaymentFailure } from '../../mocks/pusher'

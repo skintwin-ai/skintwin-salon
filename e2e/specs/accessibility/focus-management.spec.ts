@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test'
+import { test, expect } from '../../extend-test'
 
 test.describe('Focus Management', () => {
   test('should have visible focus indicators', async ({ page }) => {
@@ -119,22 +119,12 @@ test.describe('Focus Management', () => {
   test('should skip to main content', async ({ page }) => {
     await page.goto('/')
 
-    // First tab should go to skip link
-    await page.keyboard.press('Tab')
+    const skipLink = page.locator('a.skip-link, a[href="#main-content"]')
+    await expect(skipLink).toHaveCount(1)
 
-    const skipLink = page.getByText(/skip/i).first()
-    if (await skipLink.isVisible()) {
-      await page.keyboard.press('Enter')
+    await skipLink.focus()
+    await page.keyboard.press('Enter')
 
-      // Focus should move to main content
-      const main = page.getByRole('main')
-      const activeElement = page.locator(':focus')
-
-      // Either main is focused or focus is inside main
-      const focusInMain =
-        (await main.locator(':focus').count()) > 0 ||
-        (await main.evaluate((el) => el === document.activeElement))
-      expect(focusInMain).toBe(true)
-    }
+    await expect(page.locator('#main-content')).toBeFocused()
   })
 })
