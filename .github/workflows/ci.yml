@@ -15,6 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: '18'
+  GATSBY_NODE_VERSION: '16'
 
 jobs:
   setup:
@@ -45,7 +46,7 @@ jobs:
 
       - name: Install dependencies
         if: steps.cache.outputs.cache-hit != 'true'
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
   lint:
     name: Lint
@@ -70,7 +71,7 @@ jobs:
           key: ${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Run ESLint
         run: yarn lint
@@ -101,7 +102,7 @@ jobs:
           key: ${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Run TypeScript check
         run: yarn typecheck
@@ -129,7 +130,7 @@ jobs:
           key: ${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Run unit tests with coverage
         run: yarn test:coverage
@@ -150,25 +151,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Gatsby / native deps)
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ env.GATSBY_NODE_VERSION }}
           cache: 'yarn'
 
-      - name: Restore node_modules cache
-        uses: actions/cache@v4
-        with:
-          path: |
-            node_modules
-            .cache
-          key: ${{ runner.os }}-modules-${{ hashFiles('yarn.lock') }}
-
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-engines
 
       - name: Build Gatsby site
-        run: yarn build
+        run: yarn --ignore-engines build
         env:
           GATSBY_AUTH_KEY: ${{ secrets.GATSBY_AUTH_KEY }}
           GATSBY_BASE_API: ${{ vars.GATSBY_BASE_API || 'https://api.paystack.co' }}

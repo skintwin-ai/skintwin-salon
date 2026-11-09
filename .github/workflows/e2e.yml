@@ -19,6 +19,7 @@ concurrency:
 
 env:
   NODE_VERSION: '18'
+  GATSBY_NODE_VERSION: '16'
 
 jobs:
   build:
@@ -28,17 +29,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Setup Node.js
+      - name: Setup Node.js (Gatsby / native deps)
         uses: actions/setup-node@v4
         with:
-          node-version: ${{ env.NODE_VERSION }}
+          node-version: ${{ env.GATSBY_NODE_VERSION }}
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-engines
 
       - name: Build Gatsby site
-        run: yarn build
+        run: yarn --ignore-engines build
         env:
           GATSBY_AUTH_KEY: ${{ secrets.GATSBY_AUTH_KEY }}
           GATSBY_BASE_API: ${{ vars.GATSBY_BASE_API || 'https://api.paystack.co' }}
@@ -71,7 +72,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
@@ -80,7 +81,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: .
 
       - name: Run E2E tests on Chromium
         run: yarn e2e --project=chromium
@@ -110,7 +111,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install firefox --with-deps
@@ -119,7 +120,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: .
 
       - name: Run E2E tests on Firefox
         run: yarn e2e --project=firefox
@@ -149,7 +150,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install webkit --with-deps
@@ -158,7 +159,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: .
 
       - name: Run E2E tests on WebKit
         run: yarn e2e --project=webkit
@@ -189,7 +190,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install chromium webkit --with-deps
@@ -198,7 +199,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: .
 
       - name: Run E2E tests on Mobile
         run: yarn e2e --project=mobile-chrome --project=mobile-safari
@@ -228,7 +229,7 @@ jobs:
           cache: 'yarn'
 
       - name: Install dependencies
-        run: yarn install --frozen-lockfile
+        run: yarn install --frozen-lockfile --ignore-scripts
 
       - name: Install Playwright browsers
         run: npx playwright install chromium --with-deps
@@ -237,7 +238,7 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: .
 
       - name: Run accessibility tests
         run: yarn e2e --project=chromium --grep="@accessibility"
