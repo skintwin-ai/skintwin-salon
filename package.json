@@ -15,6 +15,7 @@
   },
   "scripts": {
     "develop": "gatsby develop",
+    "develop:node16": "bash scripts/gatsby-develop-node16.sh",
     "start": "gatsby develop",
     "build": "gatsby build",
     "serve": "gatsby serve",
