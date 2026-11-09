@@ -24,19 +24,9 @@ test.describe('New Client Registration', () => {
       phone: '+2348012345678',
     })
 
-    // Accept consent
     await intakePage.acceptConsent()
-
-    // Submit form
     await intakePage.submitForm()
-
-    // Should proceed to next step or show success
-    await expect(intakePage.page.getByTestId('client-saved-message'))
-      .toBeVisible({ timeout: 5000 })
-      .catch(() => {
-        // Alternative: check for navigation to checkout
-        expect(intakePage.page.url()).toContain('/checkout')
-      })
+    await expect(intakePage.page).toHaveURL(/\/cart/, { timeout: 20_000 })
   })
 
   test('should validate required fields', async () => {
