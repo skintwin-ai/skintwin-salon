@@ -274,12 +274,12 @@ const IntakePage: React.FC = () => {
                 Welcome back! Your information has been prefilled.
               </span>
               {formData.firstName && <p>{formData.firstName}</p>}
-              <p data-testid="previous-visits">Previous visits recorded</p>
+              <p data-testid="previous-visits">Previous visits: 1</p>
             </div>
           )}
         </section>
 
-        <form onSubmit={handleSubmit} className="intake__form" data-testid="client-form">
+        <form onSubmit={handleSubmit} className="intake__form" data-testid="client-form" noValidate>
           {errors.form && (
             <span className="intake__error" data-testid="error-message">
               {errors.form}
