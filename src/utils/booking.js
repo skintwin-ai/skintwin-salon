@@ -129,3 +129,11 @@ export function minutesToTime(totalMinutes) {
 export function slotsOverlap(startA, endA, startB, endB) {
   return startA < endB && endA > startB
 }
+
+/** Calendar keys in the viewer's local timezone (matches Playwright + browser). */
+export function toLocalDateKey(date) {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}

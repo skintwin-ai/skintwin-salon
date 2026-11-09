@@ -10,6 +10,7 @@ import {
   formatDuration,
   resolveServiceSelections,
   getSelectionTotals,
+  toLocalDateKey,
 } from '../utils/booking'
 
 import '../styles/global.scss'
@@ -64,8 +65,9 @@ const BookingPage: React.FC = () => {
     for (let i = 1; i <= 30; i++) {
       const date = new Date(today)
       date.setDate(today.getDate() + i)
-      if (date.getDay() !== 0) {
-        dates.push(date.toISOString().split('T')[0])
+      const day = date.getDay()
+      if (day !== 0 && day !== 6) {
+        dates.push(toLocalDateKey(date))
       }
     }
     return dates

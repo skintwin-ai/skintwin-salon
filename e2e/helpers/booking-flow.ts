@@ -101,6 +101,13 @@ export const defaultTestClient: ClientDetails = {
   phone: '+2348012345678',
 }
 
+function toLocalDateKey(date: Date): string {
+  const y = date.getFullYear()
+  const m = String(date.getMonth() + 1).padStart(2, '0')
+  const d = String(date.getDate()).padStart(2, '0')
+  return `${y}-${m}-${d}`
+}
+
 export function getTomorrowDate(): string {
   const tomorrow = new Date()
   tomorrow.setDate(tomorrow.getDate() + 1)
@@ -109,11 +116,11 @@ export function getTomorrowDate(): string {
     tomorrow.setDate(tomorrow.getDate() + 1)
   }
 
-  return tomorrow.toISOString().split('T')[0]
+  return toLocalDateKey(tomorrow)
 }
 
 export function getDateInDays(days: number): string {
   const date = new Date()
   date.setDate(date.getDate() + days)
-  return date.toISOString().split('T')[0]
+  return toLocalDateKey(date)
 }

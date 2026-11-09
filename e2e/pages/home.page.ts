@@ -53,9 +53,12 @@ export class HomePage {
     const continueButton = this.page.locator('[data-testid="proceed-to-booking"]')
     if (await continueButton.count()) {
       await continueButton.click()
+      await this.page.waitForURL('**/booking**')
+      await this.page.getByTestId('booking-summary').waitFor({ state: 'visible' })
       return
     }
     await this.page.goto('/booking')
+    await this.page.getByTestId('booking-summary').waitFor({ state: 'visible' })
   }
 
   async proceedToCheckout(): Promise<void> {

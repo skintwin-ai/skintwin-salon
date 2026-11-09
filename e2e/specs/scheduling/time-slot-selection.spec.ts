@@ -14,7 +14,7 @@ test.describe('Time Slot Selection', () => {
     // Add a service and go to booking
     await homePage.goto()
     await homePage.addService('srv-001')
-    await bookingPage.goto()
+    await homePage.proceedToBooking()
 
     // Select a date
     await bookingPage.selectDate(getTomorrowDate())

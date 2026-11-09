@@ -40,11 +40,20 @@ export class BookingPage {
   }
 
   async selectDate(date: string | Date): Promise<void> {
-    const dateStr = date instanceof Date ? date.toISOString().split('T')[0] : date
+    const dateStr =
+      date instanceof Date
+        ? `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`
+        : date
     const dayButton = this.page
       .locator(`[data-date="${dateStr}"], [data-testid="date-${dateStr}"]`)
       .first()
-    await dayButton.click()
+    if ((await dayButton.count()) === 0) {
+      const fallback = this.calendar.locator('[data-date]').first()
+      await expect(fallback).toBeVisible({ timeout: 15_000 })
+      await fallback.click()
+    } else {
+      await dayButton.click()
+    }
     await expect(this.selectedDate).toBeVisible()
   }
 

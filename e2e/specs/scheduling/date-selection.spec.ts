@@ -14,7 +14,7 @@ test.describe('Date Selection', () => {
     // Add a service first
     await homePage.goto()
     await homePage.addService('srv-001')
-    await bookingPage.goto()
+    await homePage.proceedToBooking()
   })
 
   test('should display calendar for date selection', async () => {
@@ -24,7 +24,7 @@ test.describe('Date Selection', () => {
   test('should not allow past dates', async ({ page }) => {
     const yesterday = new Date()
     yesterday.setDate(yesterday.getDate() - 1)
-    const dateStr = yesterday.toISOString().split('T')[0]
+    const dateStr = `${yesterday.getFullYear()}-${String(yesterday.getMonth() + 1).padStart(2, '0')}-${String(yesterday.getDate()).padStart(2, '0')}`
 
     const pastDate = page.getByTestId(`date-${dateStr}`)
     if (await pastDate.isVisible()) {
@@ -35,7 +35,7 @@ test.describe('Date Selection', () => {
   test('should allow future dates', async ({ page }) => {
     const tomorrow = new Date()
     tomorrow.setDate(tomorrow.getDate() + 1)
-    const dateStr = tomorrow.toISOString().split('T')[0]
+    const dateStr = `${tomorrow.getFullYear()}-${String(tomorrow.getMonth() + 1).padStart(2, '0')}-${String(tomorrow.getDate()).padStart(2, '0')}`
 
     const futureDate = page.getByTestId(`date-${dateStr}`)
     if (await futureDate.isVisible()) {
