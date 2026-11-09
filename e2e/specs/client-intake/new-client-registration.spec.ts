@@ -71,8 +71,6 @@ test.describe('New Client Registration', () => {
 
     await intakePage.attemptSubmit()
 
-    // Should show phone validation error
-    const phoneError = page.getByText(/phone/i)
-    await expect(phoneError).toBeVisible()
+    await expect(page.getByTestId('error-phone')).toBeVisible()
   })
 })
