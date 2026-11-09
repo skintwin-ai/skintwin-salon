@@ -2,7 +2,7 @@ name: Lighthouse
 
 on:
   push:
-    branches: [main]
+    branches: [main, develop, 'cursor/**']
   pull_request:
     branches: [main, develop]
   schedule:
