@@ -1,10 +1,10 @@
 {
   "ci": {
     "collect": {
-      "startServerCommand": "yarn serve",
+      "startServerCommand": "yarn serve -p 9000 -H 127.0.0.1",
       "startServerReadyPattern": "gatsby serve",
-      "startServerReadyTimeout": 30000,
-      "url": ["http://localhost:8000/", "http://localhost:8000/cart"],
+      "startServerReadyTimeout": 60000,
+      "url": ["http://127.0.0.1:9000/", "http://127.0.0.1:9000/cart"],
       "numberOfRuns": 3
     },
     "assert": {
