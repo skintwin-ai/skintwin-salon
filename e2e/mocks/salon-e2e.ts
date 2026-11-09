@@ -54,6 +54,69 @@ export async function installSalonE2eMocks(page: Page): Promise<void> {
     })
   })
 
+  await page.route('**/api/create_invoice', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: true,
+        message: 'Invoice created',
+        data: {
+          id: `PRQ_e2e_${Date.now()}`,
+          offline_reference: `OFF_e2e_${Date.now()}`,
+          amount: 850000,
+          currency: 'NGN',
+          status: 'pending',
+          customer: { email: 'test.client@example.com', customer_code: 'CUS_e2e' },
+        },
+      }),
+    })
+  })
+
+  await page.route('**/api/push_to_terminal', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: true,
+        message: 'Event sent to Terminal',
+        data: { id: `EVT_e2e_${Date.now()}` },
+      }),
+    })
+  })
+
+  await page.route('**/api/clients/create', async (route) => {
+    const postData = route.request().postDataJSON() || {}
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: true,
+        data: { id: `clt_e2e_${Date.now()}`, ...postData },
+      }),
+    })
+  })
+
+  await page.route('**/api/clients/intake', async (route) => {
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ status: true, message: 'Intake saved' }),
+    })
+  })
+
+  await page.route('**/api/appointments/create', async (route) => {
+    const postData = route.request().postDataJSON() || {}
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({
+        status: true,
+        data: { id: `apt_e2e_${Date.now()}`, ...postData, status: 'draft' },
+      }),
+    })
+  })
+
   await page.route('**/api/clients/lookup**', async (route) => {
     const url = new URL(route.request().url())
     const email = url.searchParams.get('email')

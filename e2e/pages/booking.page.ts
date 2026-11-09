@@ -65,7 +65,9 @@ export class BookingPage {
 
   async selectFirstAvailableSlot(): Promise<void> {
     const availableSlot = this.timeSlots.locator('[data-available="true"]').first()
+    await expect(availableSlot).toBeVisible({ timeout: 15_000 })
     await availableSlot.click()
+    await expect(this.selectedTime).toBeVisible()
   }
 
   async selectProvider(providerId: string): Promise<void> {

@@ -10,7 +10,7 @@ test.describe('Accessibility Audit', () => {
   ]
 
   for (const { path, name } of pages) {
-    test(`${name} page should have no accessibility violations`, async ({ page }) => {
+    test(`${name} page should have no accessibility violations @accessibility`, async ({ page }) => {
       await page.goto(path)
 
       // Wait for page to fully load
@@ -131,7 +131,7 @@ test.describe('Accessibility Audit', () => {
     })
   }
 
-  test('should have proper color contrast', async ({ page }) => {
+  test('should have proper color contrast @accessibility', async ({ page }) => {
     await page.goto('/')
 
     const accessibilityScanResults = await new AxeBuilder({ page }).withTags(['wcag2aa']).analyze()
