@@ -41,7 +41,7 @@ test.describe('New Client Registration', () => {
 
   test('should validate required fields', async () => {
     // Try to submit empty form
-    await intakePage.submitForm()
+    await intakePage.attemptSubmit()
 
     // Should show validation errors
     await expect(intakePage.page.getByText(/required/i)).toBeVisible()
@@ -55,7 +55,7 @@ test.describe('New Client Registration', () => {
       phone: '+2348012345678',
     })
 
-    await intakePage.submitForm()
+    await intakePage.attemptSubmit()
 
     // Should show email validation error
     const emailError = page.getByText(/valid email/i)
@@ -70,7 +70,7 @@ test.describe('New Client Registration', () => {
       phone: '123', // Invalid phone
     })
 
-    await intakePage.submitForm()
+    await intakePage.attemptSubmit()
 
     // Should show phone validation error
     const phoneError = page.getByText(/phone/i)

@@ -90,8 +90,7 @@ export async function completeFullBookingFlow(
   await completeScheduling(page, booking.providerId, booking.date, booking.time)
   await completeIntake(page, client)
 
-  const checkoutPage = new CheckoutPage(page)
-  await expect(checkoutPage.isOnCheckoutPage()).resolves.toBe(true)
+  await expect(page).toHaveURL(/\/cart/, { timeout: 20_000 })
 }
 
 export const defaultTestClient: ClientDetails = {

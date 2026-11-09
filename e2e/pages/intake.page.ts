@@ -120,6 +120,11 @@ export class IntakePage {
   async continueToCheckout(): Promise<void> {
     await expect(this.continueButton).toBeEnabled()
     await this.continueButton.click()
+    await this.page.waitForURL(/\/cart/, { timeout: 20_000 })
+  }
+
+  async attemptSubmit(): Promise<void> {
+    await this.continueButton.click()
   }
 
   async goBack(): Promise<void> {
