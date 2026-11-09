@@ -51,11 +51,9 @@ export async function completeScheduling(
     await bookingPage.selectProvider(providerId)
   }
 
-  if (time) {
-    await bookingPage.selectTimeSlot(time)
-  } else {
-    await bookingPage.selectFirstAvailableSlot()
-  }
+  const slotTime = time || '09:00'
+  await expect(bookingPage.timeSlots).toBeVisible({ timeout: 15_000 })
+  await bookingPage.selectTimeSlot(slotTime)
 
   await bookingPage.continueToIntake()
 }

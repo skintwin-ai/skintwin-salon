@@ -58,7 +58,8 @@ export class BookingPage {
   }
 
   async selectTimeSlot(time: string): Promise<void> {
-    const timeButton = this.timeSlots.locator(`[data-time="${time}"]`)
+    const timeButton = this.timeSlots.locator(`[data-time="${time}"]`).first()
+    await expect(timeButton).toBeVisible({ timeout: 15_000 })
     await timeButton.click()
     await expect(this.selectedTime).toContainText(time)
   }
