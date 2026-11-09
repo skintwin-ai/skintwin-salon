@@ -1,4 +1,8 @@
-import { isLocalPaystackRail, localPaystackInvoice, localPaystackTerminal } from './integrations/paystack-rail.js'
+import {
+  isLocalPaystackRail,
+  localPaystackInvoice,
+  localPaystackTerminal,
+} from './integrations/paystack-rail.js'
 
 async function persistSalonSync(action, payload) {
   const apiUrl = (process.env.SKINTWIN_API_URL || '').replace(/\/$/, '')
@@ -19,7 +23,9 @@ async function persistSalonSync(action, payload) {
         mode: response.ok ? 'remote' : 'local',
         persisted: true,
         skintwinId: remote.id || remote.skintwinId || null,
-        error: response.ok ? undefined : remote.message || `Platform sync failed with ${response.status}`,
+        error: response.ok
+          ? undefined
+          : remote.message || `Platform sync failed with ${response.status}`,
       }
     } catch (error) {
       return { synced: false, mode: 'local', persisted: true, error: error.message }
@@ -45,8 +51,7 @@ export async function handleSalonApi(method, pathname, body = {}) {
 
   if (pathname === '/api/integrations/skintwin' && method === 'POST') {
     const action = body.action
-    const payload =
-      body.appointment ||
+    const payload = body.appointment ||
       body.client ||
       body.treatment || {
         clientId: body.clientId,
@@ -63,5 +68,8 @@ export async function handleSalonApi(method, pathname, body = {}) {
     }
   }
 
-  return { status: 404, body: { status: false, message: `No salon route for ${method} ${pathname}` } }
+  return {
+    status: 404,
+    body: { status: false, message: `No salon route for ${method} ${pathname}` },
+  }
 }

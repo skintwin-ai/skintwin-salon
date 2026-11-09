@@ -52,23 +52,23 @@ Your site will be running at http://localhost:8000
 
 ## 📜 Available Scripts
 
-| Command | Description |
-|---------|-------------|
-| `yarn develop` | Start development server |
-| `yarn build` | Build for production |
-| `yarn serve` | Serve production build |
-| `yarn clean` | Clear Gatsby cache |
-| `yarn lint` | Run ESLint |
-| `yarn lint:fix` | Fix ESLint issues |
-| `yarn format` | Format code with Prettier |
-| `yarn format:check` | Check formatting |
-| `yarn typecheck` | Run TypeScript checks |
-| `yarn test` | Run unit tests |
-| `yarn test:watch` | Run tests in watch mode |
-| `yarn test:coverage` | Run tests with coverage |
-| `yarn e2e` | Run E2E tests |
-| `yarn e2e:ui` | Run E2E tests with UI |
-| `yarn e2e:headed` | Run E2E tests in headed mode |
+| Command              | Description                  |
+| -------------------- | ---------------------------- |
+| `yarn develop`       | Start development server     |
+| `yarn build`         | Build for production         |
+| `yarn serve`         | Serve production build       |
+| `yarn clean`         | Clear Gatsby cache           |
+| `yarn lint`          | Run ESLint                   |
+| `yarn lint:fix`      | Fix ESLint issues            |
+| `yarn format`        | Format code with Prettier    |
+| `yarn format:check`  | Check formatting             |
+| `yarn typecheck`     | Run TypeScript checks        |
+| `yarn test`          | Run unit tests               |
+| `yarn test:watch`    | Run tests in watch mode      |
+| `yarn test:coverage` | Run tests with coverage      |
+| `yarn e2e`           | Run E2E tests                |
+| `yarn e2e:ui`        | Run E2E tests with UI        |
+| `yarn e2e:headed`    | Run E2E tests in headed mode |
 
 ## 🧪 Testing
 
@@ -91,6 +91,7 @@ yarn e2e:headed        # Run with visible browser
 ### Accessibility Testing
 
 E2E tests include comprehensive accessibility audits using axe-core:
+
 - WCAG 2.1 AA compliance checks
 - Heading structure validation
 - Color contrast verification
@@ -110,6 +111,7 @@ This repository uses GitHub Actions for continuous integration:
 ### Dependabot
 
 Automated dependency updates are configured via `.github/dependabot.yml`:
+
 - Weekly npm dependency updates
 - Grouped minor/patch updates
 - GitHub Actions updates

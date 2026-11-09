@@ -1,6 +1,6 @@
 /**
  * Error Monitoring Configuration for Sentry
- * 
+ *
  * This module provides error tracking and monitoring for the SkinTwin Salon app.
  * In production, it sends error reports to Sentry for analysis.
  */
@@ -119,7 +119,7 @@ class ErrorMonitor {
       console.log(`[ErrorMonitor] Transaction started: ${name} (${op})`)
       return {
         finish: () => console.log(`[ErrorMonitor] Transaction finished: ${name}`),
-        setTag: (key: string, value: string) => 
+        setTag: (key: string, value: string) =>
           console.log(`[ErrorMonitor] Transaction tag: ${key}=${value}`),
       }
     }

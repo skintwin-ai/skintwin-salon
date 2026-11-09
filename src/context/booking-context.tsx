@@ -179,11 +179,7 @@ const decryptValue = async (storedValue: string): Promise<string> => {
   const key = await getCryptoKey()
   const iv = new Uint8Array(fromBase64(ivB64))
   const cipherBytes = new Uint8Array(fromBase64(cipherB64))
-  const plainBuffer = await window.crypto.subtle.decrypt(
-    { name: 'AES-GCM', iv },
-    key,
-    cipherBytes
-  )
+  const plainBuffer = await window.crypto.subtle.decrypt({ name: 'AES-GCM', iv }, key, cipherBytes)
   return new TextDecoder().decode(plainBuffer)
 }
 

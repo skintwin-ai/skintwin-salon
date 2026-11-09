@@ -111,7 +111,11 @@ export async function expectColorContrast(
   expect(contrastRatio).toBeGreaterThanOrEqual(minRatio)
 }
 
-export async function expectTouchTarget(page: Page, selector: string, minSize: number = 44): Promise<void> {
+export async function expectTouchTarget(
+  page: Page,
+  selector: string,
+  minSize: number = 44
+): Promise<void> {
   const element = page.locator(selector)
   const box = await element.boundingBox()
 

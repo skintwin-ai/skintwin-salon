@@ -4,10 +4,7 @@
       "startServerCommand": "yarn serve",
       "startServerReadyPattern": "gatsby serve",
       "startServerReadyTimeout": 30000,
-      "url": [
-        "http://localhost:8000/",
-        "http://localhost:8000/cart"
-      ],
+      "url": ["http://localhost:8000/", "http://localhost:8000/cart"],
       "numberOfRuns": 3
     },
     "assert": {

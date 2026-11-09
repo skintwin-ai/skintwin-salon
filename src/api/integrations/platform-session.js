@@ -3,7 +3,9 @@ import { createHmac, timingSafeEqual } from 'node:crypto'
 const PREFIX = 'stsess.'
 
 function canonicalEmail(value) {
-  return String(value || '').trim().toLowerCase()
+  return String(value || '')
+    .trim()
+    .toLowerCase()
 }
 
 function platformSecret() {
@@ -86,10 +88,7 @@ export function authorizationForSync(payload) {
     return null
   }
   const email =
-    payload?.client?.email ||
-    payload?.profile?.email ||
-    payload?.email ||
-    'salon@skintwin.ai'
+    payload?.client?.email || payload?.profile?.email || payload?.email || 'salon@skintwin.ai'
   try {
     return `Bearer ${issuePlatformSession({
       email,

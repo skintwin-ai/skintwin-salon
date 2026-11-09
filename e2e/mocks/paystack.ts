@@ -124,7 +124,9 @@ export async function simulatePaymentSuccess(page: Page): Promise<void> {
     )
 
     // Also try to call the Pusher mock callback if available
-    const mockPusher = (window as { mockPusher?: { triggerEvent: (event: string, data: unknown) => void } }).mockPusher
+    const mockPusher = (
+      window as { mockPusher?: { triggerEvent: (event: string, data: unknown) => void } }
+    ).mockPusher
     if (mockPusher) {
       mockPusher.triggerEvent('paymentrequest.success', {
         status: 'success',
@@ -153,7 +155,9 @@ export async function simulatePaymentFailure(page: Page): Promise<void> {
     )
 
     // Also try to call the Pusher mock callback if available
-    const mockPusher = (window as { mockPusher?: { triggerEvent: (event: string, data: unknown) => void } }).mockPusher
+    const mockPusher = (
+      window as { mockPusher?: { triggerEvent: (event: string, data: unknown) => void } }
+    ).mockPusher
     if (mockPusher) {
       mockPusher.triggerEvent('paymentrequest.failed', {
         status: 'failed',

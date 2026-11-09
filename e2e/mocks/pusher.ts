@@ -4,7 +4,8 @@ import { Page } from '@playwright/test'
  * Mock Pusher events for E2E tests
  */
 
-export type PaymentEvent = 'paymentrequest.pending' | 'paymentrequest.success' | 'paymentrequest.failed'
+export type PaymentEvent =
+  'paymentrequest.pending' | 'paymentrequest.success' | 'paymentrequest.failed'
 
 export async function simulatePaymentEvent(page: Page, event: PaymentEvent): Promise<void> {
   await page.evaluate((eventType: PaymentEvent) => {
