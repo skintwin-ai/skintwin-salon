@@ -16,7 +16,7 @@ export default defineConfig({
     ['junit', { outputFile: 'test-results/junit.xml' }],
   ],
   use: {
-    baseURL: 'http://localhost:8000',
+    baseURL: 'http://127.0.0.1:9000',
     trace: 'on-first-retry',
     screenshot: 'only-on-failure',
     video: 'retain-on-failure',
@@ -44,8 +44,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'yarn serve',
-    url: 'http://localhost:8000',
+    command: 'yarn serve -p 9000 -H 127.0.0.1',
+    url: 'http://127.0.0.1:9000',
     reuseExistingServer: !process.env.CI,
     timeout: 120 * 1000,
   },

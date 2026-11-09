@@ -51,7 +51,9 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: gatsby-build-e2e
-          path: public/
+          path: |
+            public/
+            .cache/
           retention-days: 1
 
   e2e-chromium:
